@@ -73,7 +73,7 @@ class ProtectedRoutesTest extends TestCase
 
     public function testLoginFlowPagesWithoutPendingLoginGoBackToLogin(): void
     {
-        foreach (['/agent-users/two-factor/setup', '/agent-users/two-factor/backup-codes'] as $url) {
+        foreach (['/agent-users/two-factor/setup'] as $url) {
             $this->get($url);
             $this->assertRedirectContains('/agent-users/login', $url);
         }

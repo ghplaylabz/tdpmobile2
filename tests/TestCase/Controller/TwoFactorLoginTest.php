@@ -21,7 +21,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Login with the second factor: authenticator app, emailed OTP, backup codes,
+ * Login with the second factor: authenticator app, emailed OTP,
  * first-time set-up, and the master's reset.
  */
 class TwoFactorLoginTest extends TestCase
@@ -107,14 +107,14 @@ class TwoFactorLoginTest extends TestCase
     }
 
     /**
-     * Links an authenticator for the user; returns [secret, backup codes].
+     * Links an authenticator for the user; returns [secret].
      */
     private function linkAuthenticator(string $id): array
     {
         $secret = TwoFactor::newSecret();
-        $codes = TwoFactor::enable($this->user($id), $secret, 1);
+        TwoFactor::enable($this->user($id), $secret, 1);
 
-        return [$secret, $codes];
+        return [$secret];
     }
 
     private function appCode(string $secret): string
@@ -203,13 +203,19 @@ class TwoFactorLoginTest extends TestCase
         $this->assertSession(1, 'otp_attempts');
     }
 
-    public function testBackupCodeLogsIn(): void
+    public function testBackupCodesAreNotAccepted(): void
     {
-        [, $codes] = $this->linkAuthenticator(self::MASTER_A);
+        $this->linkAuthenticator(self::MASTER_A);
+        // A user who still has backup codes from before they were removed can't use them.
+        $this->db->update('agent_users', ['backup_codes' => json_encode([password_hash('ABCD2345', PASSWORD_DEFAULT)])], ['id' => self::MASTER_A], ['id' => 'binaryuuid']);
 
-        $this->postCode($codes[0]);
-        $this->assertSession(self::MASTER_A, 'Auth.User.id');
-        $this->assertSame(9, TwoFactor::backupCodesLeft($this->user(self::MASTER_A)));
+        $this->postCode('ABCD-2345');
+        $this->assertSession(null, 'Auth.User');
+        $this->assertSession(1, 'otp_attempts');
+
+        $this->session(['agent_id' => self::MASTER_A]);
+        $this->get('/agent-users/otp');
+        $this->assertResponseNotContains('backup code');
     }
 
     public function testOtpPageWithoutPendingLoginGoesToLogin(): void
@@ -241,7 +247,7 @@ class TwoFactorLoginTest extends TestCase
         $this->assertNull($this->row(self::MASTER_A)['otp']);
     }
 
-    public function testFirstLoginEmailCodeThenSetupThenBackupCodes(): void
+    public function testFirstLoginEmailCodeThenSetupLogsIn(): void
     {
         $this->loginPost();
         $this->assertRedirectContains('/agent-users/otp');
@@ -264,18 +270,9 @@ class TwoFactorLoginTest extends TestCase
         $this->session(['agent_id' => self::MASTER_A, 'TwoFactor' => ['setup_pending' => time(), 'setup_secret' => $secret]]);
         $this->enableCsrfToken();
         $this->post('/agent-users/two-factor/setup', ['code' => $this->appCode($secret)]);
-        $this->assertRedirectContains('/agent-users/two-factor/backup-codes');
-        $this->assertNotNull($this->row(self::MASTER_A)['totp_enabled']);
-        $codes = Hash::get($_SESSION, 'TwoFactor.backup_codes');
-        $this->assertCount(TwoFactor::BACKUP_CODE_COUNT, $codes);
-
-        $this->session(['agent_id' => self::MASTER_A, 'TwoFactor' => ['setup_pending' => time(), 'backup_codes' => $codes]]);
-        $this->get('/agent-users/two-factor/backup-codes');
-        $this->assertResponseContains($codes[0]);
-
-        $this->session(['agent_id' => self::MASTER_A, 'TwoFactor' => ['setup_pending' => time(), 'backup_codes' => $codes]]);
-        $this->enableCsrfToken();
-        $this->post('/agent-users/two-factor/backup-codes');
+        $row = $this->row(self::MASTER_A);
+        $this->assertNotNull($row['totp_enabled']);
+        $this->assertNull($row['backup_codes']);
         $this->assertSession(self::MASTER_A, 'Auth.User.id');
         $this->assertSession(null, 'TwoFactor');
     }
@@ -288,10 +285,6 @@ class TwoFactorLoginTest extends TestCase
 
         $this->session(['agent_id' => self::MASTER_A, 'TwoFactor' => ['setup_pending' => time() - 3600]]);
         $this->get('/agent-users/two-factor/setup');
-        $this->assertRedirectContains('/agent-users/login');
-
-        $this->session(['agent_id' => self::MASTER_A]);
-        $this->get('/agent-users/two-factor/backup-codes');
         $this->assertRedirectContains('/agent-users/login');
     }
 

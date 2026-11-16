@@ -242,7 +242,7 @@ These tests still contain a `BUG:` skip, but the bug no longer happens, so the t
 | [ApplicationTest](../tests/TestCase/ApplicationTest.php) | CakePHP(tm) : Rapid Development Framework (https://cakephp.org) | 3 | 3 | 0 |
 | [DeleteTempCommandTest](../tests/TestCase/Command/DeleteTempCommandTest.php) | `bin/cake delete_temp` deletes files older than two days under WWW_ROOT/files/pdf, | 1 | 1 | 0 |
 | [GenerateReportCommandTest](../tests/TestCase/Command/GenerateReportCommandTest.php) | `bin/cake generate_report`: writes the sales report CSV of the given agent users' orders | 5 | 5 | 0 |
-| [TwoFactorResetCommandTest](../tests/TestCase/Command/TwoFactorResetCommandTest.php) | `bin/cake two_factor reset <email>` removes an agent user's authenticator and backup codes. | 3 | 2 | 1 |
+| [TwoFactorResetCommandTest](../tests/TestCase/Command/TwoFactorResetCommandTest.php) | `bin/cake two_factor reset <email>` removes an agent user's authenticator. | 3 | 2 | 1 |
 | [AgentTopupsControllerTest](../tests/TestCase/Controller/AgentTopupsControllerTest.php) | App\Controller\AgentTopupsController: top-up list/CSV, view and upload (masters only). | 9 | 9 | 0 |
 | [AgentUsersControllerTest](../tests/TestCase/Controller/AgentUsersControllerTest.php) | App\Controller\AgentUsersController: login, logout, password flows, sub-user management. | 33 | 31 | 2 |
 | [AgentsSignupsControllerTest](../tests/TestCase/Controller/AgentsSignupsControllerTest.php) | App\Controller\AgentsSignupsController: public signup form posting to the backend API. | 5 | 5 | 0 |
@@ -273,7 +273,7 @@ These tests still contain a `BUG:` skip, but the bug no longer happens, so the t
 | [PaymentsTest](../tests/TestCase/Lib/PaymentsTest.php) | Payments helpers that only read the `Payment.*` config (written by Payments::config(), see PaymentsConfigTest). | 6 | 5 | 1 |
 | [QueueSenderTest](../tests/TestCase/Lib/QueueSenderTest.php) |  | 4 | 3 | 1 |
 | [TranslatorTest](../tests/TestCase/Lib/TranslatorTest.php) | Translations of attractions, tickets and categories for the session language. | 7 | 7 | 0 |
-| [TwoFactorTest](../tests/TestCase/Lib/TwoFactorTest.php) | TOTP codes, replay protection, backup codes and secret encryption. | 8 | 8 | 0 |
+| [TwoFactorTest](../tests/TestCase/Lib/TwoFactorTest.php) | TOTP codes, replay protection and secret encryption. | 8 | 8 | 0 |
 | [LoggableBehaviorTest](../tests/TestCase/Model/Behavior/LoggableBehaviorTest.php) | LoggableBehavior writes an audit row to `logs` after each add/edit/delete | 8 | 7 | 1 |
 | [EntitiesTest](../tests/TestCase/Model/Entity/EntitiesTest.php) |  | 5 | 5 | 0 |
 | [AdminsTableTest](../tests/TestCase/Model/Table/AdminsTableTest.php) |  | 11 | 11 | 0 |
