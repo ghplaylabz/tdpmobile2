@@ -52,7 +52,10 @@ $color_map = [
             <div class="col-lg-3 col-md-6 col-12 mb-2">
                 <?php echo $this->Form->control('to', ['class' => 'datepicker form-control', 'value' => $to, 'label' => ['text' => __('To')]]) ?>
             </div>
-            <div class="col-lg-6 col-12 d-flex justify-content-end align-items-end mb-2">
+            <div class="col-lg-3 col-md-6 col-12 mb-2">
+                <?php echo $this->Form->control('email', ['type' => 'text', 'inputmode' => 'email', 'class' => 'form-control', 'default' => $this->request->getQuery('email'), 'label' => ['text' => __('Customer Email')], 'autocomplete' => 'off', 'maxlength' => 100]) ?>
+            </div>
+            <div class="col-lg-3 col-md-6 col-12 d-flex justify-content-end align-items-end mb-2">
                 <div class="form-group mb-0"><?php echo $this->Form->submit(__('Filter'), ['class' => 'btn btn-primary me-2']) ?></div>
                 <div class="form-group mb-0"><?php echo $this->Html->link(__('Show All'), ['action' => 'index'], ['class' => 'btn btn-primary']) ?></div>
             </div>

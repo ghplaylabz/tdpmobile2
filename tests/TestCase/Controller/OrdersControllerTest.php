@@ -419,6 +419,41 @@ class OrdersControllerTest extends TestCase
         $this->assertResponseNotContains('REFVISITLATE');
     }
 
+    public function testIndexFiltersByCustomerEmail(): void
+    {
+        $orders = [
+            'REFEMAILJANE' => json_encode(['first_name' => 'Jane', 'email' => 'Jane.Tan@Example.com']),
+            'REFEMAILBOB' => json_encode(['first_name' => 'Bob', 'email' => 'bob@other.test']),
+            'REFEMAILNONE' => null,
+            'REFEMAILBAD' => 'not json jane.tan@example.com',
+            // "jane" only in another field: must not match.
+            'REFEMAILNAME' => json_encode(['first_name' => 'jane.tan@example.com', 'email' => 'x@y.test']),
+        ];
+        $n = 0;
+        foreach ($orders as $ref => $info) {
+            $n++;
+            $this->createOrder(sprintf('00000000-0000-4000-8000-0000000e20%02d', $n), self::NORMAL_A, self::AGENT_A, ['order_ref_id' => $ref, 'checkout_info' => $info]);
+        }
+        $this->createOrder('00000000-0000-4000-8000-0000000e2099', self::NORMAL_B, self::AGENT_B, [
+            'order_ref_id' => 'REFEMAILOTHERAGENT', 'checkout_info' => json_encode(['email' => 'jane.tan@example.com']),
+        ]);
+        $this->loginAs(self::NORMAL_A);
+
+        // Partial and case-insensitive.
+        $this->get('/orders?email=' . urlencode('JANE.TAN@'));
+        $this->assertResponseOk();
+        $this->assertResponseContains('REFEMAILJANE');
+        foreach (['REFEMAILBOB', 'REFEMAILNONE', 'REFEMAILBAD', 'REFEMAILNAME', 'REFEMAILOTHERAGENT'] as $ref) {
+            $this->assertResponseNotContains($ref);
+        }
+        $this->assertResponseContains('value="JANE.TAN@"');
+
+        // LIKE wildcards are literal.
+        $this->get('/orders?email=' . urlencode('%'));
+        $this->assertResponseOk();
+        $this->assertResponseNotContains('REFEMAILJANE');
+    }
+
     public function testMyTicketsRenders(): void
     {
         $this->loginAs(self::NORMAL_A);
