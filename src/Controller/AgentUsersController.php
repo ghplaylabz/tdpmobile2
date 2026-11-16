@@ -23,7 +23,7 @@ class AgentUsersController extends AppController
 
     public function initialize(): void {
       parent::initialize();
-      $this->Authentication->addUnauthenticatedActions(['otp','otpAnotherWay','resendOtp','twoFactorSetup','twoFactorBackupCodes','forgotPassword','resetPassword','setPassword']);
+      $this->Authentication->addUnauthenticatedActions(['otp','otpAnotherWay','resendOtp','twoFactorSetup','forgotPassword','resetPassword','setPassword']);
       $this->Logins = $this->fetchTable('Logins');
       $this->Logs = $this->fetchTable('Logs');
     }
@@ -252,18 +252,8 @@ class AgentUsersController extends AppController
         $submitted_otp = trim((string)($data['otp'] ?? ''));
 
         if ($use_app) {
-          $left = null;
-          if (TwoFactor::verify($agent, $submitted_otp) || ($left = TwoFactor::useBackupCode($agent, $submitted_otp)) !== null) {
-            $response = $this->_completeLogin($agent, $redirect);
-            if ($left !== null) {
-              $this->Flash->warning(__n(
-                'You signed in with a backup code. {0} backup code is left.',
-                'You signed in with a backup code. {0} backup codes are left.',
-                $left,
-                $left
-              ) . ($left <= 2 ? ' ' . __('Create new ones under Two-factor sign-in.') : ''));
-            }
-            return $response;
+          if (TwoFactor::verify($agent, $submitted_otp)) {
+            return $this->_completeLogin($agent, $redirect);
           }
           $this->_countOtpAttempt();
           $this->Flash->error(__('Incorrect code. Please try again.'));
@@ -427,11 +417,16 @@ class AgentUsersController extends AppController
         }
         $step = TwoFactor::matchStep($secret, (string)$this->request->getData('code'));
         if ($step > 0) {
-          $codes = TwoFactor::enable($agent, $secret, $step);
-          $session->delete('TwoFactor.setup_secret');
-          $session->write('TwoFactor.backup_codes', $codes);
+          TwoFactor::enable($agent, $secret, $step);
           $this->Logs->logCustom('two_factor_setup', 'agent_users', 'agent_users', $agent->id, [], ['two_factor' => 'authenticator set up']);
-          return $this->redirect(['action'=>'twoFactorBackupCodes']);
+          $redirect = $session->read('TwoFactor.redirect');
+          $session->delete('TwoFactor');
+          if (!$logged_in) {
+            $this->Flash->success(__('Two-factor sign-in is set up. Next time, enter the code from your authenticator app.'));
+            return $this->_completeLogin($agent, $this->safeRedirectTarget($redirect));
+          }
+          $this->Flash->success(__('Your authenticator app is set up.'));
+          return $this->redirect(['action'=>'twoFactor']);
         }
         if (!$logged_in) {
           $this->_countOtpAttempt();
@@ -448,41 +443,8 @@ class AgentUsersController extends AppController
     }
 
     /**
-     * Shows new backup codes once; confirming finishes the login (or returns to
-     * the Two-factor sign-in page).
-     *
-     * @return \Cake\Http\Response|null
-     */
-    public function twoFactorBackupCodes() {
-      $session = $this->request->getSession();
-      $logged_in = (bool)$this->getAuthUser('id');
-      $codes = (array)$session->read('TwoFactor.backup_codes');
-      $agent = $this->_twoFactorFlowUser($logged_in, $codes !== [] && ($logged_in || $session->read('TwoFactor.setup_pending')));
-      if ($agent === null) {
-        return $logged_in ? $this->redirect(['action'=>'twoFactor']) : $this->_restartLogin();
-      }
-      if (!$logged_in) {
-        $this->viewBuilder()->setLayout('login');
-      }
-
-      if ($this->request->is('post')) {
-        $redirect = $session->read('TwoFactor.redirect');
-        $session->delete('TwoFactor');
-        if (!$logged_in) {
-          $this->Flash->success(__('Two-factor sign-in is set up. Next time, enter the code from your authenticator app.'));
-          return $this->_completeLogin($agent, $this->safeRedirectTarget($redirect));
-        }
-        $this->Flash->success(__('Your backup codes are saved.'));
-        return $this->redirect(['action'=>'twoFactor']);
-      }
-
-      $this->set(['codes' => $codes, 'loggedIn' => $logged_in]);
-    }
-
-    /**
-     * The signed-in user's Two-factor sign-in page: method and status, backup codes
-     * left, "new backup codes" and "set up a new phone" (both need a current app
-     * code once an authenticator is linked). The switch and the method themselves
+     * The signed-in user's Two-factor sign-in page: method and status, and
+     * "set up a new phone" (needs a current app code once an authenticator is linked). The switch and the method themselves
      * are managed in the back office.
      *
      * @return \Cake\Http\Response|null
@@ -499,11 +461,6 @@ class AgentUsersController extends AppController
           $this->Flash->error(__('Incorrect code. Enter the current code from your authenticator app.'));
           return $this->redirect(['action'=>'twoFactor']);
         }
-        if ($do === 'regenerate' && $is_set_up) {
-          $session->write('TwoFactor.backup_codes', TwoFactor::regenerateBackupCodes($agent));
-          $this->Logs->logCustom('two_factor_backup_codes', 'agent_users', 'agent_users', $agent->id, [], ['two_factor' => 'backup codes regenerated']);
-          return $this->redirect(['action'=>'twoFactorBackupCodes']);
-        }
         if ($do === 'setup') {
           $session->write('TwoFactor.change', true);
           $session->delete('TwoFactor.setup_secret');
@@ -517,13 +474,11 @@ class AgentUsersController extends AppController
         'usesApp' => $uses_app,
         'isSetUp' => $is_set_up,
         'setUpOn' => $agent->totp_enabled,
-        'codesLeft' => TwoFactor::backupCodesLeft($agent),
       ]);
     }
 
     /**
-     * A master removes a sub-user's authenticator and backup codes (lost phone and
-     * no backup codes left). The user sets it up again at the next login, after an
+     * A master removes a sub-user's authenticator (lost phone). The user sets it up again at the next login, after an
      * emailed code. Masters themselves are reset with `bin/cake two_factor reset`.
      *
      * @param string|null $id Agent user id

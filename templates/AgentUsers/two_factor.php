@@ -5,7 +5,6 @@
  * @var bool $usesApp Whether the method is the authenticator app
  * @var bool $isSetUp Whether an authenticator is linked
  * @var \Cake\I18n\DateTime|null $setUpOn
- * @var int $codesLeft
  */
 $this->Html->css(['two-factor'], ['block' => true]);
 $codeField = fn() => $isSetUp
@@ -32,10 +31,9 @@ $codeField = fn() => $isSetUp
                         <div class="small text-muted"><?= __('When you sign in from a new IP address, we email you a one-time code.') ?></div>
                     <?php elseif ($isSetUp) : ?>
                         <div class="fw-bold"><?= __('Authenticator app is set up') ?></div>
-                        <div class="small text-muted">
-                            <?= $setUpOn ? __('Since {0}', h($setUpOn->i18nFormat('d MMM y'))) . ' &middot; ' : '' ?>
-                            <?= __n('{0} backup code left', '{0} backup codes left', $codesLeft, $codesLeft) ?>
-                        </div>
+                        <?php if ($setUpOn) : ?>
+                            <div class="small text-muted"><?= __('Since {0}', h($setUpOn->i18nFormat('d MMM y'))) ?></div>
+                        <?php endif; ?>
                     <?php else : ?>
                         <div class="fw-bold"><?= __('No authenticator app yet') ?></div>
                         <div class="small text-muted"><?= __('You will be asked to set one up at your next login, or set it up now.') ?></div>
@@ -46,18 +44,6 @@ $codeField = fn() => $isSetUp
     </div>
     <?php if ($usesApp) : ?>
     <div class="col-lg-5">
-        <?php if ($isSetUp) : ?>
-            <div class="card mb-3">
-                <div class="card-body">
-                    <div class="fw-bold mb-1"><?= __('New backup codes') ?></div>
-                    <p class="small text-muted"><?= __('Replaces all your backup codes, including unused ones.') ?></p>
-                    <?= $this->Form->create(null, ['autocomplete' => 'off', 'class' => 'tf-row']) ?>
-                    <?= $codeField() ?>
-                    <?= $this->Form->button(__('Create new codes'), ['name' => 'do', 'value' => 'regenerate', 'class' => 'btn btn-outline-primary btn-sm text-nowrap']) ?>
-                    <?= $this->Form->end() ?>
-                </div>
-            </div>
-        <?php endif; ?>
         <div class="card">
             <div class="card-body">
                 <div class="fw-bold mb-1"><?= $isSetUp ? __('Set up a new phone') : __('Set up an authenticator app') ?></div>

@@ -11,7 +11,7 @@ use Cake\Console\ConsoleOptionParser;
 
 /**
  * `bin/cake two_factor reset <email>`: removes an agent user's authenticator app
- * and backup codes, for someone who lost both and has nobody to reset them in the
+ * for someone who lost their phone and has nobody to reset it in the
  * portal (masters). They set it up again at their next login, after an emailed code.
  */
 class TwoFactorResetCommand extends Command
@@ -29,7 +29,7 @@ class TwoFactorResetCommand extends Command
      */
     public static function getDescription(): string
     {
-        return 'Remove an agent user\'s authenticator app and backup codes.';
+        return 'Remove an agent user\'s authenticator app.';
     }
 
     /**
