@@ -44,10 +44,10 @@
       if (details) {
         var refs = [];
         if (ticket.retail_price !== undefined && ticket.retail_price !== null) {
-          refs.push('<del><abbr title="' + esc(t('retailPrice', 'Retail price')) + '">RP</abbr> ' + money(ticket.retail_price) + '</del>');
+          refs.push('<del><abbr title="' + esc(t('retailPrice', 'Retail price')) + '" data-bs-toggle="tooltip">RP</abbr> ' + money(ticket.retail_price) + '</del>');
         }
         if (ticket.minimum_selling_price) {
-          refs.push('<abbr title="' + esc(t('minimumSellingPrice', 'Minimum selling price')) + '">MSP</abbr> ' + money(ticket.minimum_selling_price));
+          refs.push('<abbr title="' + esc(t('minimumSellingPrice', 'Minimum selling price')) + '" data-bs-toggle="tooltip">MSP</abbr> ' + money(ticket.minimum_selling_price));
         }
         if (refs.length) html += '<div class="price-ref">' + refs.join('<br>') + '</div>';
       }

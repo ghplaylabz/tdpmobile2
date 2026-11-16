@@ -266,7 +266,7 @@ label { font-weight: 500; }
   color: var(--sg-muted);
   white-space: nowrap;
 }
-.price-ref abbr[title] { text-decoration: none; cursor: help; border-bottom: 1px dotted currentColor; }
+.price-ref abbr { text-decoration: none; cursor: help; border-bottom: 0; }
 .price-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--sg-muted); font-weight: 600; }
 
 /* ---------- Quantity stepper (keeps .input-group / .btn-subtract / .btn-add hooks) ---------- */
