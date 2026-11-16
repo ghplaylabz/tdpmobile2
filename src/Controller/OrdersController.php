@@ -1922,6 +1922,19 @@ class OrdersController extends AppController
             }
           }
         }
+        // Customer email (from the checkout form, stored in the checkout_info JSON); partial match.
+        $email = trim((string)$this->request->getQuery('email'));
+        if ($email !== '') {
+          $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower(mb_substr($email, 0, 100))) . '%';
+          // CASE guards JSON_EXTRACT, which errors on a row that isn't valid JSON. The value goes
+          // through like() (not ->bind()) so it is also bound in the subquery that loads OrderItems.
+          $query = $query->where(function ($exp, $q) use ($like) {
+            $jsonEmail = $q->func()->lower([
+              "JSON_UNQUOTE(CASE WHEN JSON_VALID(Orders.checkout_info) THEN JSON_EXTRACT(Orders.checkout_info, '$.email') END)" => 'literal',
+            ]);
+            return $exp->like($jsonEmail, $like, 'string');
+          });
+        }
         $orders = $this->paginate($query->where($conditions)->contain(['OrderItems'=>['Tickets']]));
 
         if ($this->request->getSession()->check('language')) {
