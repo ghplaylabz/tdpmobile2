@@ -74,6 +74,24 @@ class RedesignRenderTest extends TestCase
         $this->assertResponseCode(404);
     }
 
+    public function testSidebarListsCitiesNotCountries(): void
+    {
+        $this->getTableLocator()->get('Cities')->getConnection()
+            ->insert('cities', ['id' => '00000000-0000-4000-8000-0000000000c4', 'country' => 'Malaysia', 'name' => 'Penang'], ['id' => 'binaryuuid']);
+
+        // All countries: every country's cities, no country checkboxes.
+        $this->get('/attractions');
+        $this->assertResponseOk();
+        $this->assertResponseContains('id="city-' . self::CITY . '"');
+        $this->assertResponseContains('id="city-00000000-0000-4000-8000-0000000000c4"');
+        $this->assertResponseNotContains('country-check');
+
+        // One country: only its cities.
+        $this->get('/country/singapore');
+        $this->assertResponseContains('id="city-' . self::CITY . '"');
+        $this->assertResponseNotContains('id="city-00000000-0000-4000-8000-0000000000c4"');
+    }
+
     public function testNavbarListsDestinations(): void
     {
         $this->get('/orders/cart');
