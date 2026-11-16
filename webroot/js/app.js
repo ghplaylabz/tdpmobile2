@@ -140,9 +140,8 @@
     // Popovers (announcements) and tooltips (price labels).
     $('[data-bs-toggle="popover"]').popover();
     if (window.bootstrap) {
-      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-        new window.bootstrap.Tooltip(el);
-      });
+      // Delegated, so rows rendered later by JS (date-based tickets) get tooltips too.
+      new window.bootstrap.Tooltip(document.body, { selector: '[data-bs-toggle="tooltip"]' });
     }
 
     // Announcements: mark as read when opened; the × in the popover title closes it.
