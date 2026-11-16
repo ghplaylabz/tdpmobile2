@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 declare(strict_types=1);
 
 namespace App\Test\TestCase\Lib;
@@ -11,7 +11,7 @@ use RobThree\Auth\Providers\Qr\BaconQrCodeProvider;
 use RobThree\Auth\TwoFactorAuth;
 
 /**
- * TOTP codes, replay protection, backup codes and secret encryption.
+ * TOTP codes, replay protection and secret encryption.
  */
 class TwoFactorTest extends TestCase
 {
@@ -86,19 +86,6 @@ class TwoFactorTest extends TestCase
         $this->assertFalse(TwoFactor::verify($user, 'abcdef', self::NOW));
     }
 
-    public function testBackupCodesWorkOnce(): void
-    {
-        $user = $this->load();
-        $codes = TwoFactor::regenerateBackupCodes($user);
-
-        $this->assertCount(TwoFactor::BACKUP_CODE_COUNT, $codes);
-        $this->assertMatchesRegularExpression('/^[A-Z2-9]{4}-[A-Z2-9]{4}$/', $codes[0]);
-        $this->assertSame(9, TwoFactor::useBackupCode($user, strtolower(str_replace('-', ' ', $codes[0]))));
-        $this->assertNull(TwoFactor::useBackupCode($user, $codes[0]));
-        $this->assertSame(9, TwoFactor::backupCodesLeft($this->load()));
-        $this->assertNull(TwoFactor::useBackupCode($user, 'AAAA-AAAA'));
-    }
-
     public function testSecretIsStoredEncryptedAndHidden(): void
     {
         $secret = TwoFactor::newSecret();
@@ -152,15 +139,5 @@ class TwoFactorTest extends TestCase
 
         $this->assertTrue(TwoFactor::verify($user, $this->code($secret, self::NOW), self::NOW));
         $this->assertFalse(TwoFactor::verify($stale, $this->code($secret, self::NOW), self::NOW), 'a second request holding the old row loses the race');
-    }
-
-    public function testAStaleUserCannotReuseABackupCode(): void
-    {
-        $user = $this->load();
-        $codes = TwoFactor::regenerateBackupCodes($user);
-        $stale = $this->load();
-
-        $this->assertSame(9, TwoFactor::useBackupCode($user, $codes[0]));
-        $this->assertNull(TwoFactor::useBackupCode($stale, $codes[0]), 'a second request holding the old row loses the race');
     }
 }

@@ -18,10 +18,9 @@ $fallback = $fallback ?? false;
     <?php if (($method ?? null) === 'authenticator'): ?>
     <h3 class="subtitle text-center"><?= __('Authenticator code') ?></h3>
     <p class="form-description" ><?= __('Enter the 6-digit code from your authenticator app.') ?></p>
-    <div class="mb-2">
-      <?= $this->Form->control('otp', ['label'=>'', 'class'=>'form-control', 'placeholder'=>__('6-digit code'), 'inputmode'=>'numeric', 'autocomplete'=>'one-time-code', 'autofocus'=>true]) ?>
+    <div class="mb-4">
+      <?= $this->Form->control('otp', ['label'=>'', 'class'=>'form-control', 'placeholder'=>__('6-digit code'), 'inputmode'=>'numeric', 'autocomplete'=>'one-time-code', 'maxlength'=>6, 'autofocus'=>true]) ?>
     </div>
-    <p class="small text-muted mb-4"><?= __('Lost your phone? Enter one of your backup codes (XXXX-XXXX) instead.') ?></p>
     <?php else: ?>
     <h3 class="subtitle text-center"><?= __('OTP') ?></h3>
     <p class="form-description" ><?= __('Please enter your One Time Password (OTP) sent to your email.') ?></p>
