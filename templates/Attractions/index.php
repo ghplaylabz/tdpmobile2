@@ -214,37 +214,28 @@ $this->Html->script('pages/attractions-index.js', ['block' => 'script']);
           </div>
         </div>
 
-        <div class="search-countries w-100 pt-4">
-          <h2 class="sg-filter-title"><?= $currentCountry ? __('Cities') : __('Country') ?></h2>
-          <div class="sg-filter-group country-checkboxes" id="country-accordion">
-            <?php $countryIndex = 1; ?>
-            <?php foreach ($citiesByCountry as $countryName => $countryCities): ?>
-              <div class="sg-filter-item country-group">
-                <div class="sg-filter-row" id="country-heading-<?= $countryIndex ?>">
-                  <input class="form-check-input country-check" type="checkbox"
-                         data-country-id="<?= $countryIndex ?>" id="country-<?= $countryIndex ?>" />
-                  <label class="form-check-label fw-semibold" for="country-<?= $countryIndex ?>"><?= h($countryName) ?></label>
-                  <button class="btn btn-link sg-filter-toggle<?= $currentCountry ? '' : ' collapsed' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#country-collapse-<?= $countryIndex ?>" aria-expanded="<?= $currentCountry ? 'true' : 'false' ?>" aria-controls="country-collapse-<?= $countryIndex ?>" aria-label="<?= __('Show cities') ?>"><i class="fa fa-angle-down" aria-hidden="true"></i></button>
-                </div>
-                <div id="country-collapse-<?= $countryIndex ?>" class="collapse<?= $currentCountry ? ' show' : '' ?>" aria-labelledby="country-heading-<?= $countryIndex ?>" data-bs-parent="#country-accordion">
-                  <ul class="sg-filter-children">
-                    <?php foreach ($countryCities as $city): ?>
-                      <li>
-                        <input class="form-check-input city-check city-check-<?= $countryIndex ?>" type="checkbox"
-                               data-country-id="<?= $countryIndex ?>"
-                               name="cities[]" value="<?= h($city->id) ?>"
-                               id="city-<?= $countryIndex ?>-<?= h($city->id) ?>"
-                               <?= in_array((string)$city->id, $selected_city_strings, true) ? 'checked' : '' ?> />
-                        <label class="form-check-label" for="city-<?= $countryIndex ?>-<?= h($city->id) ?>"><?= h($city->name) ?></label>
-                      </li>
-                    <?php endforeach; ?>
-                  </ul>
-                </div>
-              </div>
-              <?php $countryIndex++; ?>
+        <?php
+        // Cities only (the country is picked with the dropdown above): that country's cities,
+        // or every city when showing all countries, by name.
+        $sidebarCities = array_merge(...array_values(array_map('array_values', $citiesByCountry ?: [[]])));
+        usort($sidebarCities, fn($a, $b): int => strcasecmp((string)$a->name, (string)$b->name));
+        ?>
+        <?php if ($sidebarCities): ?>
+        <div class="search-cities w-100 pt-4">
+          <h2 class="sg-filter-title"><?= __('Cities') ?></h2>
+          <ul class="sg-filter-group sg-city-list list-unstyled mb-0">
+            <?php foreach ($sidebarCities as $city): ?>
+              <li>
+                <input class="form-check-input city-check" type="checkbox"
+                       name="cities[]" value="<?= h($city->id) ?>"
+                       id="city-<?= h($city->id) ?>"
+                       <?= in_array((string)$city->id, $selected_city_strings, true) ? 'checked' : '' ?> />
+                <label class="form-check-label" for="city-<?= h($city->id) ?>"><?= h($city->name) ?></label>
+              </li>
             <?php endforeach; ?>
-          </div>
+          </ul>
         </div>
+        <?php endif ?>
 
         <div class="sg-filter-actions w-100 mt-auto">
           <button type="submit" class="btn btn-cta w-100" id="btn-apply-filters"><i class="fa fa-filter me-2" aria-hidden="true"></i><?= __('Apply filters') ?></button>
