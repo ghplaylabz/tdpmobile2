@@ -1,6 +1,6 @@
 /*
  * Attractions listing (templates/Attractions/index.php).
- * Category / country checkbox syncing (applied with the Apply filters button), recommended carousel.
+ * Category checkbox syncing, city checkboxes (applied with the Apply filters button), recommended carousel.
  */
 $(function () {
   'use strict';
@@ -25,34 +25,8 @@ $(function () {
     }
   });
 
-  // ---- Countries <-> cities (with partial / indeterminate state). ----
-  function syncCountry(id) {
-    var $cities = $('.city-check-' + id);
-    var total = $cities.length;
-    if (total === 0) return;
-    var checked = $cities.filter(':checked').length;
-    var $country = $('.country-check[data-country-id="' + id + '"]');
-    if (checked === 0) {
-      $country.prop('checked', false).prop('indeterminate', false);
-    } else if (checked === total) {
-      $country.prop('checked', true).prop('indeterminate', false);
-    } else {
-      $country.prop('checked', false).prop('indeterminate', true);
-    }
-  }
-  $('.country-check').on('click', function () {
-    $('.city-check-' + $(this).data('country-id')).prop('checked', $(this).prop('checked'));
-    $(this).prop('indeterminate', false);
-  });
-  $('.city-check').on('click', function () {
-    syncCountry($(this).data('country-id'));
-  });
-  $('.country-check').each(function () {
-    syncCountry($(this).data('country-id'));
-  });
-
   // ---- Filters apply only via the "Apply filters" button; highlight it once something changed. ----
-  $form.on('change', '.headclass, .subclass, .country-check, .city-check', function () {
+  $form.on('change', '.headclass, .subclass, .city-check', function () {
     $('#btn-apply-filters').addClass('is-pending');
   });
 
