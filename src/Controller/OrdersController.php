@@ -1841,6 +1841,26 @@ class OrdersController extends AppController
             $agent_user_ids = [$this->getAuthUser('id')];
           }
           $conditions = ['agent_user_id IN' => $agent_user_ids];
+
+          // "Booked by" filter: the agent's users (disabled ones too, they still have orders).
+          $agentUserOptions = [];
+          $agentUsers = $this->AgentUsers->find()
+            ->select(['id', 'name', 'email', 'status'])
+            ->where(['agent_id' => $this->getAuthUser('agent_id')])
+            ->orderBy(['name' => 'ASC'])
+            ->all();
+          foreach ($agentUsers as $agentUser) {
+            $label = $agentUser->name . ' (' . $agentUser->email . ')';
+            if ($agentUser->status !== 'active') {
+              $label .= ' - ' . __('Disabled');
+            }
+            $agentUserOptions[(string)$agentUser->id] = $label;
+          }
+          $filterAgentUserId = (string)$this->request->getQuery('agent_user_id');
+          if ($filterAgentUserId !== '' && isset($agentUserOptions[$filterAgentUserId])) {
+            $conditions = ['agent_user_id' => $filterAgentUserId];
+          }
+          $this->set(compact('agentUserOptions'));
         }
 
         if ($this->request->getQuery('order_ref_id')) {
