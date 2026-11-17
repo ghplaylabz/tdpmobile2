@@ -78,6 +78,11 @@ $this->Html->script(['bootstrap-datepicker.min', 'pages/orders-checkout.js'], ['
           <p class="required-legend mb-3"><?= __('Fields marked * are required.') ?></p>
           <div class="row g-3">
             <div class="col-md-6">
+              <?= $this->Form->control('tracking_no', ['class' => 'form-control', 'label' => __('Order Tracking Number'), 'type' => 'text', 'placeholder' => 'Unique or Empty']) ?>
+              <div class="form-text"><?= __('Optional: your own reference for this order. It must be unique.') ?></div>
+            </div>
+            <div class="w-100 m-0 p-0"></div>
+            <div class="col-md-6">
               <?= $this->Form->control('first_name', ['class' => 'form-control', 'required' => 'required', 'maxlength' => 50, 'pattern' => '[a-zA-Z0-9\-_\s]+', 'title' => __('English letters, numbers, spaces, - and _ only'), 'label' => __('First Name (English only)*'), 'default' => !empty($agent['first_name']) ? $agent['first_name'] : '', 'autocomplete' => 'given-name']) ?>
             </div>
             <div class="col-md-6">
@@ -88,10 +93,6 @@ $this->Html->script(['bootstrap-datepicker.min', 'pages/orders-checkout.js'], ['
             </div>
             <div class="col-md-6">
               <?= $this->Form->control('mobile', ['class' => 'form-control', 'required' => 'required', 'label' => __('Mobile * (e.g. +6512345678)'), 'default' => !empty($agent['contact_no']) ? $agent['contact_no'] : '', 'pattern' => '[+]*[0-9]+', 'title' => '+ and numbers only', 'inputmode' => 'tel', 'autocomplete' => 'tel']) ?>
-            </div>
-            <div class="col-md-6">
-              <?= $this->Form->control('tracking_no', ['class' => 'form-control', 'label' => __('Order Tracking Number'), 'type' => 'text', 'placeholder' => 'Unique or Empty']) ?>
-              <div class="form-text"><?= __('Optional: your own reference for this order. It must be unique.') ?></div>
             </div>
           </div>
         </div>
