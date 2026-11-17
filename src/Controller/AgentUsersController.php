@@ -733,23 +733,58 @@ class AgentUsersController extends AppController
         return $this->redirect(['controller'=>'AgentUsers','action' => 'index']);
     }
 
+    /**
+     * Master disables one of their own sub-users (normal / viewer): they can't log in,
+     * and any session they have open ends.
+     *
+     * @param string|null $id Agent user id
+     * @return \Cake\Http\Response|null
+     */
     public function suspend($id = null)
     {
-        $this->request->allowMethod(['post', 'delete']);
+        return $this->_setStatus($id, 'inactive');
+    }
+
+    /**
+     * Master enables a disabled sub-user again.
+     *
+     * @param string|null $id Agent user id
+     * @return \Cake\Http\Response|null
+     */
+    public function activate($id = null)
+    {
+        return $this->_setStatus($id, 'active');
+    }
+
+    /**
+     * @param string|null $id Agent user id
+     * @param string $status active|inactive
+     * @return \Cake\Http\Response|null
+     */
+    private function _setStatus($id, string $status)
+    {
+        $this->request->allowMethod(['post']);
         $agentUser = $this->_getManageableAgentUser($id);
         if ($agentUser === null) {
           $this->Flash->error(__('You are not authorized to access that location.'));
-          return $this->redirect(['controller'=>'AgentUsers','action' => 'index']);
+          return $this->redirect(['action' => 'index']);
         }
-        $agentUser->status = 'inactive';
+        $agentUser->status = $status;
         $agentUser->setDirty('status', true);
         if ($this->AgentUsers->save($agentUser)) {
-          $this->Flash->success(__('The agent user has been successfully suspended.'));
-          return $this->redirect(['controller'=>'AgentUsers','action' => 'index']);
+          if ($status === 'inactive') {
+            // Sessions live in the database: removing them logs the user out now.
+            $this->fetchTable('AgentSessions')->deleteAll(['agent_user_id' => (string)$agentUser->id]);
+          }
+          $this->Logs->logCustom($status === 'active' ? 'agent_user_enabled' : 'agent_user_disabled', 'agent_users', 'agent_users', $agentUser->id, [], ['status' => $status]);
+          $this->Flash->success($status === 'active'
+            ? __('{0} is enabled and can log in again.', $agentUser->name)
+            : __('{0} is disabled and can no longer log in.', $agentUser->name));
+          return $this->redirect(['action' => 'index']);
         }
-        $this->Flash->error(__('The agent user password could not be reset. Please, try again or contact administrator.'));
+        $this->Flash->error(__('The agent user could not be updated. Please, try again or contact administrator.'));
 
-        return $this->redirect(['controller'=>'AgentUsers','action' => 'index']);
+        return $this->redirect(['action' => 'index']);
     }
 
     /**

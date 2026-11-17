@@ -122,8 +122,8 @@ class AttractionsController extends AppController
         if (empty($agent_attraction_ids)) {
           $this->set(compact('attractions','search','selected_categories','selected_countries','selected_cities'));
           $this->set('categories', []);
-          // The country page still shows its destination tiles when the agent has no attractions.
-          $this->set('citiesByCountry', $currentCountry ? [$currentCountry['name'] => $this->Cities->find()->where(['country' => $currentCountry['name']])->orderBy(['name' => 'ASC'])->all()->toList()] : []);
+          // The sidebar cities and the country page's destination tiles still show when the agent has no attractions.
+          $this->set('citiesByCountry', $this->_citiesByCountry($currentCountry));
           $this->set('recommended_attractions', []);
           return;
         }
@@ -227,17 +227,7 @@ class AttractionsController extends AppController
             Translator::translateCategory($this->request, $category);
           }
         }
-        // Pass cities grouped by country for the nested country/city filter.
-        $this->Cities = $this->fetchTable('Cities');
-        $cities = $this->Cities->find()
-          ->select(['id', 'country', 'name'])
-          ->where($currentCountry ? ['country' => $currentCountry['name']] : [])
-          ->orderBy(['country' => 'ASC', 'name' => 'ASC'])
-          ->all();
-        $citiesByCountry = [];
-        foreach ($cities as $city) {
-          $citiesByCountry[$city->country][] = $city;
-        }
+        $citiesByCountry = $this->_citiesByCountry($currentCountry);
         // Recommended showcase row: curated via the recommended_attractions table,
         // agent-scoped and published, narrowed only by the country/city filter
         // (reuse $conditions, which holds just the city filter), top 10 by
@@ -265,6 +255,28 @@ class AttractionsController extends AppController
           }
         }
         $this->set(compact('attractions','categories','search','selected_categories','selected_countries','selected_cities','citiesByCountry','recommended_attractions'));
+    }
+
+    /**
+     * Cities grouped by country (sidebar city filter, country page tiles): every
+     * city, or only the current country's.
+     *
+     * @param array|null $currentCountry Country from Destinations, or null for all
+     * @return array<string, list<\App\Model\Entity\City>>
+     */
+    private function _citiesByCountry(?array $currentCountry): array
+    {
+        $cities = $this->fetchTable('Cities')->find()
+          ->select(['id', 'country', 'name'])
+          ->where($currentCountry ? ['country' => $currentCountry['name']] : [])
+          ->orderBy(['country' => 'ASC', 'name' => 'ASC'])
+          ->all();
+        $byCountry = [];
+        foreach ($cities as $city) {
+          $byCountry[$city->country][] = $city;
+        }
+
+        return $byCountry;
     }
 
     /**

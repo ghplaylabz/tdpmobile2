@@ -25,6 +25,7 @@ class SecurityTest extends TestCase
     protected array $fixtures = [
         'app.Agents',
         'app.AgentUsers',
+        'app.AgentSessions',
         'app.Logins',
         'app.Logs',
         'app.UsersIpaddress',
@@ -146,6 +147,57 @@ class SecurityTest extends TestCase
         $this->post('/agent-users/suspend/' . self::NORMAL_A);
 
         $this->assertSame('inactive', $this->userRow(self::NORMAL_A)['status']);
+    }
+
+    public function testDisablingASubUserEndsTheirSessionAndEnablingRestoresLogin(): void
+    {
+        $this->db->insert('agent_sessions', ['id' => 'sess-normal-a', 'data' => '', 'expires' => time() + 3600, 'agent_user_id' => self::NORMAL_A]);
+        $this->db->insert('agent_sessions', ['id' => 'sess-master-a', 'data' => '', 'expires' => time() + 3600, 'agent_user_id' => self::MASTER_A]);
+
+        $this->loginAs(self::MASTER_A, self::AGENT_A, 'master');
+        $this->enableCsrfToken();
+        $this->post('/agent-users/suspend/' . self::NORMAL_A);
+        $this->assertRedirectContains('/agent-users');
+        $this->assertSame('inactive', $this->userRow(self::NORMAL_A)['status']);
+        $ids = array_column($this->db->execute('SELECT id FROM agent_sessions')->fetchAll('assoc'), 'id');
+        $this->assertNotContains('sess-normal-a', $ids, 'the disabled user is logged out');
+        $this->assertContains('sess-master-a', $ids, 'other users stay logged in');
+
+        $this->loginAs(self::MASTER_A, self::AGENT_A, 'master');
+        $this->enableCsrfToken();
+        $this->post('/agent-users/activate/' . self::NORMAL_A);
+        $this->assertSame('active', $this->userRow(self::NORMAL_A)['status']);
+    }
+
+    public function testOnlyAMasterCanEnableItsOwnSubUsers(): void
+    {
+        $this->db->update('agent_users', ['status' => 'inactive'], ['id' => self::NORMAL_B], ['id' => 'binaryuuid']);
+        $this->db->update('agent_users', ['status' => 'inactive'], ['id' => self::MASTER_A], ['id' => 'binaryuuid']);
+
+        $this->loginAs(self::MASTER_A, self::AGENT_A, 'master');
+        $this->enableCsrfToken();
+        $this->post('/agent-users/activate/' . self::NORMAL_B);
+        $this->assertSame('inactive', $this->userRow(self::NORMAL_B)['status'], 'user of another agent');
+        $this->post('/agent-users/activate/' . self::MASTER_A);
+        $this->assertSame('inactive', $this->userRow(self::MASTER_A)['status'], 'not themselves');
+
+        $this->loginAs(self::NORMAL_A, self::AGENT_A, 'normal');
+        $this->enableCsrfToken();
+        $this->post('/agent-users/activate/' . self::MASTER_A);
+        $this->assertSame('inactive', $this->userRow(self::MASTER_A)['status'], 'a normal user cannot');
+    }
+
+    public function testIndexShowsEnableOrDisable(): void
+    {
+        $this->loginAs(self::MASTER_A, self::AGENT_A, 'master');
+        $this->get('/agent-users');
+        $this->assertResponseContains('/agent-users/suspend/' . self::NORMAL_A);
+
+        $this->db->update('agent_users', ['status' => 'inactive'], ['id' => self::NORMAL_A], ['id' => 'binaryuuid']);
+        $this->loginAs(self::MASTER_A, self::AGENT_A, 'master');
+        $this->get('/agent-users');
+        $this->assertResponseContains('/agent-users/activate/' . self::NORMAL_A);
+        $this->assertResponseContains('Disabled');
     }
 
     private function loginPost(string $query = ''): void

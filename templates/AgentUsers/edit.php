@@ -11,7 +11,7 @@
             <legend><?= __('Edit Account Details') ?></legend>
             <?php
                 echo $this->Form->control('name',['class'=>'form-control']);
-                echo $this->Form->control('role',['options'=>['normal'=>__('Normal'),'viewer'=>__('Viewer')]]);
+                echo $this->Form->control('role',['options'=>['normal'=>__('Normal'),'viewer'=>__('Viewer')], 'class'=>'form-select']);
             ?>
         </fieldset>
         <?= $this->Form->button(__('Update'),['class'=>'btn btn-primary']) ?>
