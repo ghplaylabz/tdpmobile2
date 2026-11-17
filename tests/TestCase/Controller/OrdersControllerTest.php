@@ -389,6 +389,41 @@ class OrdersControllerTest extends TestCase
         $this->assertResponseNotContains('REFNORMALB1');
     }
 
+    public function testIndexMasterCanFilterByAgentUser(): void
+    {
+        $this->ordersForIndex();
+        $this->loginAs(self::MASTER_A);
+
+        $this->get('/orders');
+        $this->assertResponseContains('name="agent_user_id"');
+        $this->assertResponseContains('value="' . self::NORMAL_A . '"');
+        $this->assertResponseNotContains('value="' . self::NORMAL_B . '"');
+
+        $this->get('/orders?agent_user_id=' . self::NORMAL_A);
+        $this->assertResponseOk();
+        $this->assertResponseContains('REFNORMALA1');
+        $this->assertResponseNotContains('REFMASTERA1');
+
+        // A user of another agent is ignored: the master still sees only their own agent's orders.
+        $this->get('/orders?agent_user_id=' . self::NORMAL_B);
+        $this->assertResponseOk();
+        $this->assertResponseContains('REFNORMALA1');
+        $this->assertResponseContains('REFMASTERA1');
+        $this->assertResponseNotContains('REFNORMALB1');
+    }
+
+    public function testIndexNormalUserHasNoAgentUserFilter(): void
+    {
+        $this->ordersForIndex();
+        $this->loginAs(self::NORMAL_A);
+        $this->get('/orders?agent_user_id=' . self::MASTER_A);
+
+        $this->assertResponseOk();
+        $this->assertResponseNotContains('name="agent_user_id"');
+        $this->assertResponseContains('REFNORMALA1');
+        $this->assertResponseNotContains('REFMASTERA1');
+    }
+
     public function testIndexVisitDateFilterUsesBothBounds(): void
     {
         $this->settlementTicket();

@@ -37,14 +37,14 @@ $color_map = [
                 <?php echo $this->Form->control('tracking_no', ['type' => 'text', 'class' => 'form-control', 'default' => $this->request->getQuery('tracking_no'), 'label' => ['text' => __('Tracking No')], 'autocomplete' => 'off']) ?>
             </div>
             <div class="col-lg-3 col-md-6 col-12 mb-2">
-                <?php echo $this->Form->control('status', ['class' => 'form-control', 'options' => ['all' => 'All','done' => __('Completed'), 
+                <?php echo $this->Form->control('status', ['class' => 'form-select', 'options' => ['all' => 'All','done' => __('Completed'), 
                 'cancelled' => __('Cancelled'), 
                 'waiting' => __('Waiting'),
                 'refunded'=> __('Refunded'),
                 'rejected'=> __('Failed')], 'default' => $this->request->getQuery('status'), 'label' => ['text' => __('Status')]]) ?>
             </div>
             <div class="col-lg-3 col-md-6 col-12 mb-2">
-                <?php echo $this->Form->control('date_type',['options'=> ['created' => 'Booking Date', 'visit_date' => 'Visit Date'],'class'=>'form-control', 'label'=>['text' => 'Date Type'],'default'=>$this->request->getQuery('date_type')]);   ?>
+                <?php echo $this->Form->control('date_type',['options'=> ['created' => 'Booking Date', 'visit_date' => 'Visit Date'],'class'=>'form-select', 'label'=>['text' => 'Date Type'],'default'=>$this->request->getQuery('date_type')]);   ?>
             </div>
             <div class="col-lg-3 col-md-6 col-12 mb-2">
                 <?php echo $this->Form->control('from', ['class' => 'datepicker form-control', 'value' => $from, 'label' => ['text' => __('From')]]) ?>
@@ -55,7 +55,13 @@ $color_map = [
             <div class="col-lg-3 col-md-6 col-12 mb-2">
                 <?php echo $this->Form->control('email', ['type' => 'text', 'inputmode' => 'email', 'class' => 'form-control', 'default' => $this->request->getQuery('email'), 'label' => ['text' => __('Customer Email')], 'autocomplete' => 'off', 'maxlength' => 100]) ?>
             </div>
-            <div class="col-lg-3 col-md-6 col-12 d-flex justify-content-end align-items-end mb-2">
+            <?php if (!empty($agentUserOptions)) : ?>
+            <div class="col-lg-3 col-md-6 col-12 mb-2">
+                <?php echo $this->Form->control('agent_user_id', ['class' => 'form-select', 'options' => $agentUserOptions, 'empty' => __('All Users'), 'default' => $this->request->getQuery('agent_user_id'), 'label' => ['text' => __('Booked By')]]) ?>
+            </div>
+            <?php endif; ?>
+            <?php // Next to the last field when there's room (7 fields), else on its own row (8 fields); right-aligned either way. ?>
+            <div class="<?= empty($agentUserOptions) ? 'col-lg-3 col-md-6' : '' ?> col-12 d-flex justify-content-end align-items-end mb-2">
                 <div class="form-group mb-0"><?php echo $this->Form->submit(__('Filter'), ['class' => 'btn btn-primary me-2']) ?></div>
                 <div class="form-group mb-0"><?php echo $this->Html->link(__('Show All'), ['action' => 'index'], ['class' => 'btn btn-primary']) ?></div>
             </div>
