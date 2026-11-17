@@ -34,7 +34,7 @@ class ProtectedRoutesTest extends TestCase
             '/agent-topups/topup-images/agenttopups/x/y.png',
             '/agent-users', '/agent-users/view', '/agent-users/add', '/agent-users/edit/' . self::ID,
             '/agent-users/read/' . self::ID, '/agent-users/agent-reset-password/' . self::ID,
-            '/agent-users/suspend/' . self::ID, '/agent-users/contact', '/agent-users/logout',
+            '/agent-users/suspend/' . self::ID, '/agent-users/activate/' . self::ID, '/agent-users/contact', '/agent-users/logout',
             '/agent-users/two-factor', '/agent-users/reset-two-factor/' . self::ID, '/agent-users/change-password',
             '/credit-logs', '/credit-logs/index',
             '/orders', '/orders/cart', '/orders/checkout', '/orders/confirmation', '/orders/get-status',
