@@ -1080,8 +1080,11 @@ class AttractionsController extends AppController
                 }
               }
               if (!empty($ticket->fixeddates)) {
-                foreach ($ticket->fixeddates as $key => $fixeddate) {
-                  if (($now = $now->addSeconds($ticket->cutoff_seconds)) <= new DateTime($fixeddate->date->format('Y-m-d'). ' ' . $fixeddate->time->format('H:i:s'))) {
+                // Earliest bookable slot for this ticket. Don't reassign $now: that added
+                // the cut-off again for every slot and ticket, hiding most times.
+                $earliest = $now->addSeconds((int)$ticket->cutoff_seconds);
+                foreach ($ticket->fixeddates as $fixeddate) {
+                  if ($earliest <= new DateTime($fixeddate->date->format('Y-m-d'). ' ' . $fixeddate->time->format('H:i:s'))) {
                     $times[$fixeddate->time->format('H:i')] = ['time_value'=>$fixeddate->time->format('H:i'),'time_display'=>$fixeddate->time->format('h:ia')];
                   }
                 }
