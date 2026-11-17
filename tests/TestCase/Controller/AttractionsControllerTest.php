@@ -364,4 +364,66 @@ class AttractionsControllerTest extends TestCase
         $this->assertResponseCode(400);
         $this->assertResponseContains('Attraction not found');
     }
+
+    /**
+     * An fdatetime ticket tagged to the agent, with one slot per time on the date.
+     *
+     * @param list<string> $times H:i
+     */
+    private function fdatetimeTicket(string $attractionId, string $ticketId, string $agentId, int $cutoffSeconds, DateTime $date, array $times): void
+    {
+        $this->createTicket($ticketId, $attractionId, ['pricing_type' => 'fdatetime', 'cutoff_seconds' => $cutoffSeconds]);
+        $this->insertRow('fdatesettlements', ['ticket_id' => $ticketId, 'label' => 'Rate', 'rate' => 25, 'rebate' => 0]);
+        $rateId = (int)$this->db()->execute('SELECT MAX(id) AS id FROM fdatesettlements')->fetch('assoc')['id'];
+        $this->insertRow('fdatesettlements_agents', ['ticket_id' => $ticketId, 'fdatesettlement_id' => $rateId, 'agent_id' => $agentId]);
+        foreach ($times as $time) {
+            $this->insertRow('fixeddates', [
+                'ticket_id' => $ticketId, 'date' => $date->format('Y-m-d'), 'time' => $time . ':00', 'rate' => 25,
+                'created' => new DateTime(), 'modified' => new DateTime(),
+            ]);
+        }
+    }
+
+    /**
+     * @return list<string> H:i of the times returned for the date
+     */
+    private function slotTimes(string $attractionId, DateTime $date): array
+    {
+        $this->loginAs(self::MASTER_A);
+        $this->get('/attractions/get-fixeddate-time/' . $attractionId . '?date=' . rawurlencode($date->format('d M Y')));
+        $this->assertResponseOk();
+
+        return array_column(json_decode((string)$this->_response->getBody(), true)['data'], 'time_value');
+    }
+
+    public function testFixeddateTimesAreNotCutOffOncePerSlot(): void
+    {
+        $nine = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+        $date = new DateTime('+3 days');
+        $this->createAttraction(self::ATTRACTION_A, ['category_id' => self::CATEGORY, 'pricing_type' => 'fdatetime']);
+        $this->fdatetimeTicket(self::ATTRACTION_A, self::TICKET_A, self::AGENT_A, 86400, $date, $nine);
+
+        // Regression: the 1-day cut-off was added again for every slot, leaving only 2 of 9.
+        $this->assertSame($nine, $this->slotTimes(self::ATTRACTION_A, $date));
+
+        // A second ticket tagged to the same agent doesn't push the cut-off further either.
+        $this->fdatetimeTicket(self::ATTRACTION_A, self::TICKET_B, self::AGENT_A, 86400, $date, $nine);
+        $this->assertSame($nine, $this->slotTimes(self::ATTRACTION_A, $date));
+    }
+
+    public function testFixeddateTimesHonourTheCutOff(): void
+    {
+        $date = new DateTime('+1 day');
+        $this->createAttraction(self::ATTRACTION_A, ['category_id' => self::CATEGORY, 'pricing_type' => 'fdatetime']);
+        // 1-day + 2-hour cut-off: tomorrow's slots before now + 2h are closed.
+        $earliest = (new DateTime())->addSeconds(86400 + 7200);
+        $times = [];
+        for ($h = 0; $h < 24; $h++) {
+            $times[] = sprintf('%02d:30', $h);
+        }
+        $this->fdatetimeTicket(self::ATTRACTION_A, self::TICKET_A, self::AGENT_A, 86400 + 7200, $date, $times);
+
+        $expected = array_values(array_filter($times, fn(string $t): bool => new DateTime($date->format('Y-m-d') . ' ' . $t) >= $earliest));
+        $this->assertSame($expected, $this->slotTimes(self::ATTRACTION_A, $date));
+    }
 }
