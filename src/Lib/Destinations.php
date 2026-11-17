@@ -73,7 +73,7 @@ class Destinations
     {
         static $byName = null;
         $aliases = [
-            'hong kong' => 'hk', 'macau' => 'mo', 'macao' => 'mo', 'korea' => 'kr', 'usa' => 'us',
+            'hong kong' => 'hk', 'macau' => 'mo', 'macao' => 'mo', 'korea' => 'kr', 'korea, republic of' => 'kr', 'usa' => 'us',
             'united states of america' => 'us', 'uk' => 'gb', 'england' => 'gb', 'uae' => 'ae',
             'russia' => 'ru', 'czech republic' => 'cz', 'turkey' => 'tr', 'myanmar' => 'mm', 'burma' => 'mm',
         ];
