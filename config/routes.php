@@ -122,6 +122,7 @@ return static function (RouteBuilder $routes): void {
    $routes->connect('/agent-users/read/{id}', ['controller' => 'AgentUsers', 'action' => 'read'], ['pass' => ['id']]);
    $routes->connect('/agent-users/agent-reset-password/{id}', ['controller' => 'AgentUsers', 'action' => 'agentResetPassword'], ['pass' => ['id']]);
    $routes->connect('/agent-users/suspend/{id}', ['controller' => 'AgentUsers', 'action' => 'suspend'], ['pass' => ['id']]);
+   $routes->connect('/agent-users/activate/{id}', ['controller' => 'AgentUsers', 'action' => 'activate'], ['pass' => ['id']]);
     $routes->connect('/agent-users/contact', ['controller' => 'AgentUsers', 'action' => 'contact']);
     $routes->connect('/agent-users/login', ['controller' => 'AgentUsers', 'action' => 'login']);
     $routes->connect('/agent-users/logout', ['controller' => 'AgentUsers', 'action' => 'logout']);

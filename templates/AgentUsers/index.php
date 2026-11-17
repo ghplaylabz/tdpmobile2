@@ -24,13 +24,18 @@
       <tbody>
         <?php foreach ($agents as $agent_user): ?>
           <tr>
-            <td><?= $agent_user->name ?></td>
+            <td><?= h($agent_user->name) ?></td>
                 <td><?= h($agent_user->email) ?></td>
                 <td><span class="badge <?= ($agent_user->role=='viewer')?'text-bg-secondary':'text-bg-info' ?>"><?= __(ucwords($agent_user->role)) ?></span></td>
-                <td><span class="badge <?= ($agent_user->status=='active')?'text-bg-primary':'text-bg-dark' ?>"><?= __(ucwords($agent_user->status)) ?></span></td>
+                <td><span class="badge <?= ($agent_user->status=='active')?'text-bg-success':'text-bg-secondary' ?>"><?= $agent_user->status == 'active' ? __('Active') : __('Disabled') ?></span></td>
                 <td>
                     <?php echo $this->Html->link('<i class="fa fa-pencil"></i>',['controller' => 'AgentUsers', 'action' => 'edit', $agent_user->id],['escape'=>false,'class'=>'btn btn-primary']) ?>
                     <a href="#" class="btn btn-primary" data-post-url="<?= $this->Url->build(['controller' => 'AgentUsers', 'action' => 'agentResetPassword', $agent_user->id]) ?>" data-confirm="<?= h(__('Are you sure you want to reset password of {0}', $agent_user->name)) ?>"><?= __('Reset Password') ?></a>
+                    <?php if ($agent_user->status === 'active'): ?>
+                    <a href="#" class="btn btn-outline-danger" data-post-url="<?= $this->Url->build(['controller' => 'AgentUsers', 'action' => 'suspend', $agent_user->id]) ?>" data-confirm="<?= h(__('Disable {0}? They will be logged out and can no longer log in.', $agent_user->name)) ?>"><?= __('Disable') ?></a>
+                    <?php else: ?>
+                    <a href="#" class="btn btn-outline-success" data-post-url="<?= $this->Url->build(['controller' => 'AgentUsers', 'action' => 'activate', $agent_user->id]) ?>" data-confirm="<?= h(__('Enable {0}? They will be able to log in again.', $agent_user->name)) ?>"><?= __('Enable') ?></a>
+                    <?php endif ?>
                     <?php if ($agent_user->totp_enabled): ?>
                     <a href="#" class="btn btn-outline-primary" data-post-url="<?= $this->Url->build(['controller' => 'AgentUsers', 'action' => 'resetTwoFactor', $agent_user->id]) ?>" data-confirm="<?= h(__('Reset the authenticator app of {0}? Only do this after confirming with them in person or by phone. They will set it up again at their next login.', $agent_user->name)) ?>"><?= __('Reset Authenticator') ?></a>
                     <?php endif ?>
