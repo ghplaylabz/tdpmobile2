@@ -259,6 +259,14 @@
             "fix": "DateTime/Date are immutable: a bare `$d->addDays(1);` is a silent no-op. Reassign: `$d = $d->addDays(1);`. (Check each hit — the statement may be on the right side of an assignment on the previous line.)"
         },
         {
+            "id": "immutable-reassign-in-expression",
+            "regex": "\\(\\s*\\$([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\\$\\1->(add|sub|modify|setTime|setDate|startOf|endOf)[A-Za-z]*\\(",
+            "glob": "*.php",
+            "severity": "warning",
+            "phase": "cake5-code-apis",
+            "fix": "A date reassigned inside a condition/expression (`if (($now = $now->addSeconds($x)) <= ...)`) changes on every evaluation; in a loop the offset accumulates. Usually an over-fix of 3.x code that was already immutable (FrozenTime / useImmutable entity dates). Use a new variable computed once: `$earliest = $now->addSeconds($x); if ($earliest <= ...)`."
+        },
+        {
             "id": "plugin-load-static",
             "regex": "Plugin::load\\(|Plugin::loadAll\\(",
             "glob": "*.php",

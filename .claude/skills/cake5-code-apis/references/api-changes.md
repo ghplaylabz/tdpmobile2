@@ -94,11 +94,15 @@ Event callbacks take `Cake\Event\EventInterface $event` (not `Event`). `beforeSa
 | `use Cake\I18n\Time;` / `FrozenTime` | `use Cake\I18n\DateTime;` |
 | `FrozenDate` / `Date` (mutable) | `Cake\I18n\Date` (immutable) |
 | `$d->addDays(1);` (mutable in 3.x) | `$d = $d->addDays(1);` |
+| `if ($now->addSeconds($cutoff) <= $slot)` with `$now = FrozenTime::now()` (already immutable) | **leave as is** — don't "fix" it to `($now = $now->addSeconds(...))`; that adds the offset again on every loop pass |
+| `foreach (...) { if ($now->addSeconds($t->cutoff) <= ...) }` (mutable `Time`, relied on per-iteration mutation? usually not) | `$earliest = $now->addSeconds($t->cutoff);` once per item, then compare — never reassign the loop's base variable |
 | `$d->modify('+1 week');` | `$d = $d->modify('+1 week');` |
 | `$d->subDay()` / `addMonth()` | `$d->subDays(1)` / `addMonths(1)` |
 | `$x instanceof Time` (meaning datetime) | `$x instanceof \DateTimeInterface` — `Cake\I18n\Time` is now time-of-day |
 | `Time::setToStringFormat(...)` | `DateTime::setToStringFormat(...)` |
 | `Type::build('datetime')->useImmutable()` | remove — always immutable |
+
+**Before reassigning a date, check what the 3.x code had.** Only `Cake\I18n\Time` / `Date` created with `new` / `::now()` / `createFromFormat()` were mutable. `FrozenTime` / `FrozenDate` were already immutable, and so were ORM entity dates when the 3.x bootstrap had `Type::build(...)->useImmutable()`. On those, `$x->addDays(1)` inside an expression never changed `$x`, so adding `$x = ` changes behaviour. Reassign only where the 3.x code was mutable **and** later lines relied on the change. Real bug from a production upgrade: `if (($now = $now->addSeconds($ticket->cutoff_seconds)) <= $slotTime)` inside a slot loop added the cut-off once per slot and per ticket. Agents saw 1, 2, 3… of 9 time slots on successive days, and none for today.
 
 ## Mail
 ```php
