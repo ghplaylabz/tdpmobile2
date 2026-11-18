@@ -40,7 +40,7 @@ class ProtectedRoutesTest extends TestCase
             '/orders', '/orders/cart', '/orders/checkout', '/orders/confirmation', '/orders/get-status',
             '/orders/thank-you', '/orders/view/REF1', '/orders/download-invoice/REF1', '/orders/my-tickets',
             '/orders/cancel-voucher/CODE1', '/orders/remove-ticket/' . self::ID . '/01-Jan-2027',
-            '/vouchers/apiview/2026/0101/CODE1', '/vouchers/download-all/' . self::ID,
+            '/vouchers/apiview/2026/0101/CODE1', '/vouchers/download-all/' . self::ID, '/vouchers/zip-all/' . self::ID,
             '/reports', '/reports/reports', '/reports/download/report',
             '/voucher-merging/get-status',
         ];

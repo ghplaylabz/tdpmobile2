@@ -72,6 +72,14 @@ return [
             'zh_CN' => '中文',
         ]
     ],
+    // Logout timing (merged over config/app.php, which has timeout 360 / cookie_lifetime 14400).
+    // 'timeout': minutes of inactivity before logout (server side, reset on every request).
+    // 'session.cookie_lifetime': seconds the browser keeps the cookie, counted from login and NOT extended by
+    // activity, so it is a hard limit per login; 0 = until the browser closes (then only 'timeout' applies).
+    // 'Session' => [
+    //     'timeout' => 120,
+    //     'ini' => ['session.cookie_lifetime' => 0],
+    // ],
     'Login' => [
         'max_minutes' => 3,
         'max_count_per_max_minutes' => 5,

@@ -33,6 +33,7 @@ Tests: schema comes from `tests/schema/app.sql` + `tests/schema/log.sql` (schema
 - `config/plugins.php` registers plugins (Authentication, CakePdf, DatabaseLog, DebugKit/Bake/Migrations dev/CLI only).
 - `app_config.php`, `.env` and `config/.setenv.properties` (Apache `SetEnv`, untracked; template `config/.setenv.properties.example`) contain real credentials — never echo or commit their values.
 - Security-related settings: `SECURITY_SALT` (required — bootstrap throws without it), `DEBUG` (defaults to false), `APP_FULL_BASE_URL` (set in production so absolute links don't come from the Host header), `SESSION_COOKIE_SECURE` (default true; `false` only for local http), `Vouchers.allowLegacyMd5Links` (accept old `md5(id.Api.secret)` voucher links; new format is HMAC-SHA256), `Security.cfConnectingIp` (`cloudflare` default / `always` / `never` — when to trust `CF-Connecting-IP`, see `src/Util/ClientIp.php`), `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` (`Turnstile.*`; enable "Try another way" on the authenticator code page).
+- Logout timing: `Session.timeout` (idle minutes, server side) and `Session.ini.session.cookie_lifetime` (seconds from login, not extended by activity — currently 4h, so it wins over the 6h idle timeout). Override either under `Session` in `app_config.php` (deep-merged over `app.php`); see `app_config.example.php`.
 - Local CLI: the `php` on PATH may not be 8.x; use the Laragon PHP 8.5 binary for `bin/cake`, `phpunit` and the dev server (`php -S localhost:8765 -t webroot webroot/index.php`).
 
 ## Architecture

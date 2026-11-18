@@ -196,6 +196,52 @@ class VouchersControllerTest extends TestCase
         $this->assertHeaderContains('Content-Disposition', 'REFA1.pdf');
     }
 
+    // ---- zipAll (ZIP of separate PDFs, streamed from the queue server) ----
+
+    public function testZipAllOfAnotherAgentsOrderIs404(): void
+    {
+        $this->loginAs(self::MASTER_A);
+        $this->get('/vouchers/zip-all/' . self::ORDER_B);
+
+        $this->assertResponseCode(404);
+    }
+
+    public function testZipAllOfUnfinishedOrderIs404(): void
+    {
+        $this->loginAs(self::NORMAL_A);
+        $this->get('/vouchers/zip-all/' . self::ORDER_A_PENDING);
+
+        $this->assertResponseCode(404);
+    }
+
+    public function testZipAllOfColleaguesOrderIs404ForNormalUser(): void
+    {
+        $order = '00000000-0000-4000-8000-0000000003a3';
+        $this->createOrder($order, self::MASTER_A, self::AGENT_A, ['order_ref_id' => 'REFA3']);
+        $this->loginAs(self::NORMAL_A);
+        $this->get('/vouchers/zip-all/' . $order);
+
+        $this->assertResponseCode(404);
+    }
+
+    public function testZipAllWithBadIdIs404(): void
+    {
+        $this->loginAs(self::NORMAL_A);
+        $this->get('/vouchers/zip-all/not-a-uuid');
+
+        $this->assertResponseCode(404);
+    }
+
+    public function testZipAllWhenQueueFailsRedirectsToOrder(): void
+    {
+        // http://queue.test doesn't resolve, so the download fails; a master may download a sub-user's order.
+        $this->loginAs(self::MASTER_A);
+        $this->get('/vouchers/zip-all/' . self::ORDER_A);
+
+        $this->assertRedirect('/orders/view/REFA1');
+        $this->assertFlashMessage('The tickets could not be downloaded. Please try again later.');
+    }
+
     // ---- sdownload (signed, merged order item) ----
 
     public function testSdownloadByOrderOwnerReadsS3(): void
