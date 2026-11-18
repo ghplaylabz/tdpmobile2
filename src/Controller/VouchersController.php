@@ -260,7 +260,66 @@ class VouchersController extends AppController
             } else {
                 return $this->response->withStatus(404);
             }
-        }        
+        }
+    }
+
+    /**
+     * All tickets of a completed order as a ZIP of separate PDFs (built by the queue server).
+     * Same access as downloadAll(): the user who booked, or a master of the same agent.
+     */
+    public function zipAll($id = null)
+    {
+        $this->request->allowMethod(['get']);
+        $this->autoRender = false;
+        if (!is_string($id) || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)) {
+            return $this->response->withStatus(404);
+        }
+        $order = $this->Orders->find()->where(['id' => $id, 'status' => 'done'])->first();
+        if (!$order || !$this->_canAccessOrder($order)) {
+            return $this->response->withStatus(404);
+        }
+
+        // Streamed to a temp file: a buffered response could exhaust memory on a large ZIP.
+        $tmpPath = TMP . 'downloads' . DS . 'zip-all-' . bin2hex(random_bytes(8)) . '.zip';
+        $result = QueueSender::download('/download-zipped-pdf', 'post', ['order_ref_id' => $order->order_ref_id], $tmpPath);
+        if ($result === null) {
+            $this->Flash->error(__('The tickets could not be downloaded. Please try again later.'));
+
+            return $this->redirect(['controller' => 'Orders', 'action' => 'view', $order->order_ref_id]);
+        }
+
+        $filename = 'tickets-' . $order->order_ref_id . '.zip';
+        $cd = $result['headers']['content-disposition'] ?? '';
+        if ($cd !== '' && preg_match('/filename="?([^";\/\\\\]+)"?/i', $cd, $m)) {
+            $filename = $m[1];
+        }
+        // Remove the temp file once the response has been sent.
+        register_shutdown_function(function () use ($tmpPath) {
+            if (is_file($tmpPath)) {
+                @unlink($tmpPath);
+            }
+        });
+
+        return $this->response->withType('zip')->withFile($tmpPath, ['download' => true, 'name' => $filename]);
+    }
+
+    /**
+     * Whether the logged-in user may download this order's tickets: they booked it, or they are a
+     * master of the agent the booking user belongs to.
+     */
+    private function _canAccessOrder($order): bool
+    {
+        if ((string)$order->agent_user_id === (string)$this->getAuthUser('id')) {
+            return true;
+        }
+        if ($this->getAuthUser('role') !== 'master') {
+            return false;
+        }
+
+        return $this->fetchTable('AgentUsers')->exists([
+            'id' => $order->agent_user_id,
+            'agent_id' => $this->getAuthUser('agent_id'),
+        ]);
     }
 
     public function download($id = null, $check = null)
