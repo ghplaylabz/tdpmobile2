@@ -491,6 +491,8 @@ return [
             'engine' => 'CustomSession',
             'model' => 'AgentSessions',
         ],
+        // Idle logout in minutes. With cookie_lifetime below (seconds, counted from login, not extended by
+        // activity) the shorter one wins. Override both per environment under 'Session' in app_config.php.
         'timeout' => 360,
         'ini' => [
             // SESSION_COOKIE_SECURE=false only for local http (also used for the CSRF cookie).

@@ -205,7 +205,10 @@ function getBadgeInfo($voucher)
             <h5 class="align-self-center m-0">
               <?= __('Product(s)') ?>
             </h5>
-            <div class="d-flex">
+            <div class="d-flex flex-wrap gap-3">
+            <?php if ($order['status'] == 'Paid') : ?>
+              <?= $this->Html->link(__('Download All (ZIP)') . ' <i class="fa fa-file-archive-o"></i>', ['controller' => 'Vouchers', 'action' => 'zipAll', $order['id']], ['escape' => false, 'title' => __('Each ticket as a separate PDF, in one ZIP file')]) ?>
+            <?php endif; ?>
             <?php
                 $voucher_merging_done = false;
                 $voucher_merging_created = '';

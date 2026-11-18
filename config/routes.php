@@ -161,6 +161,7 @@ return static function (RouteBuilder $routes): void {
     $routes->connect('/vouchers/apiview/{year}/{monthday}/{code}', ['controller' => 'Vouchers', 'action' => 'apiview'],['pass'=>['year','monthday','code']]);
     $routes->connect('/vouchers/apiview/{year}/{monthday}/{code}/{check}', ['controller' => 'Vouchers', 'action' => 'apiview'],['pass'=>['year','monthday','code','check']]);
     $routes->connect('/vouchers/download-all/{id}', ['controller' => 'Vouchers', 'action' => 'downloadAll'],['pass'=>['id']]);
+    $routes->connect('/vouchers/zip-all/{id}', ['controller' => 'Vouchers', 'action' => 'zipAll'],['pass'=>['id']]);
     $routes->connect('/agent-topups/topup-images/{key}', ['controller' => 'AgentTopups', 'action' => 'topupImages'],['key'=>'.+','pass'=>['key']]);
     $routes->connect('/signup', ['controller' => 'AgentsSignups', 'action' => 'add']);
     $routes->connect('/signup/thank-you', ['controller' => 'AgentsSignups', 'action' => 'thankyou']);
