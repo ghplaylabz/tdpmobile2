@@ -32,10 +32,12 @@ class TwoFactorLoginTest extends TestCase
     protected array $fixtures = [
         'app.Agents',
         'app.AgentUsers',
+        'app.AgentSessions',
         'app.Logins',
         'app.Logs',
         'app.UsersIpaddress',
         'app.LastOtpIps',
+        'app.PasswordResets',
     ];
 
     private const AGENT_A = '00000000-0000-4000-8000-00000000000a';
@@ -201,6 +203,249 @@ class TwoFactorLoginTest extends TestCase
         $this->postCode('000000');
         $this->assertSession(null, 'Auth.User');
         $this->assertSession(1, 'otp_attempts');
+    }
+
+    // ---- account-wide limits (survive new logins, sessions and IPs) ----
+
+    private function countLogins(string $loc, string $email = 'master.a@example.com'): int
+    {
+        return (int)$this->db->execute('SELECT COUNT(*) AS n FROM logins WHERE loc = ? AND email = ?', [$loc, $email])->fetch('assoc')['n'];
+    }
+
+    private const DISABLED_MESSAGE = 'Too many incorrect codes. Your account has been disabled for security. Please contact your master account or administrator.';
+
+    private function userStatus(string $id): string
+    {
+        return $this->db->execute('SELECT status FROM agent_users WHERE id = UNHEX(REPLACE(?, \'-\', \'\'))', [$id])->fetch('assoc')['status'];
+    }
+
+    public function testWrongCodesAcrossLoginsDeactivateTheUser(): void
+    {
+        Configure::write('Login.code_max_failures', 4);
+        Configure::write('Login.deactivation_notify_emails', ['ops@example.com']);
+        $this->linkAuthenticator(self::NORMAL_A);
+        $this->db->insert('agent_sessions', ['id' => 'sess-normal-a', 'data' => '', 'expires' => time() + 3600, 'agent_user_id' => self::NORMAL_A]);
+        $pending = ['agent_id' => self::NORMAL_A];
+
+        // Each postCode() starts from a fresh session, like logging in again with the password:
+        // the per-login counter resets, the account-wide one doesn't.
+        for ($i = 1; $i <= 2; $i++) {
+            $this->postCode('000000', $pending);
+            $this->assertFlashMessage('Incorrect code. Please try again.');
+        }
+        // From the 3rd wrong code the message warns before the account is disabled.
+        $this->postCode('000000', $pending);
+        $this->assertFlashMessage('Incorrect code. Please try again. Warning: your account will be deactivated after 1 more incorrect code.');
+        $this->assertSame('active', $this->userStatus(self::NORMAL_A));
+        $this->assertNoMailSent();
+
+        $this->postCode('000000', $pending);
+        $this->assertRedirectContains('/agent-users/login');
+        $this->assertFlashMessage(self::DISABLED_MESSAGE);
+        $this->assertSame('inactive', $this->userStatus(self::NORMAL_A));
+        $this->assertSame(0, (int)$this->db->execute("SELECT COUNT(*) AS n FROM agent_sessions WHERE agent_user_id = ?", [self::NORMAL_A])->fetch('assoc')['n'], 'logged out everywhere');
+        // The admins and the agent's master, not the user.
+        $this->assertMailSentTo('admin@example.com');
+        $this->assertMailSentTo('ops@example.com');
+        $this->assertMailSentTo('master.a@example.com');
+        $this->assertMailSubjectContains('Agent user disabled after too many incorrect sign-in codes');
+        $this->assertMailContains('normal.a@example.com');
+
+        // A pending login of the disabled user can't continue...
+        $this->postCode('123456', $pending);
+        $this->assertRedirectContains('/agent-users/login');
+        $this->assertSession(null, 'Auth.User');
+
+        // ...and a correct password is refused like any inactive account.
+        $this->loginPost('normal.a@example.com');
+        $this->assertFlashMessage('Wrong login information.');
+        $this->assertSession(null, 'Auth.User');
+    }
+
+    public function testDeactivatedMasterNotifiesOnlyTheList(): void
+    {
+        Configure::write('Login.code_max_failures', 1);
+        Configure::write('Login.deactivation_notify_emails', ['ops@example.com']);
+        $this->linkAuthenticator(self::MASTER_A);
+
+        $this->postCode('000000');
+
+        $this->assertSame('inactive', $this->userStatus(self::MASTER_A));
+        $this->assertMailCount(1);
+        $this->assertMailSentTo('admin@example.com');
+        $this->assertMailSentTo('ops@example.com');
+        $this->assertFlashMessage(self::DISABLED_MESSAGE);
+    }
+
+    public function testFiveWrongCodesInOneLoginDeactivateTheUser(): void
+    {
+        $this->linkAuthenticator(self::NORMAL_A);
+        $this->session(['agent_id' => self::NORMAL_A]);
+
+        $messages = [
+            1 => 'Incorrect code. Please try again.',
+            2 => 'Incorrect code. Please try again.',
+            3 => 'Incorrect code. Please try again. Warning: your account will be deactivated after 2 more incorrect codes.',
+            4 => 'Incorrect code. Please try again. Warning: your account will be deactivated after 1 more incorrect code.',
+        ];
+        foreach ($messages as $i => $message) {
+            $this->enableCsrfToken();
+            $this->post('/agent-users/otp', ['otp' => '000000']);
+            $this->assertFlashMessage($message, 'flash', "wrong code $i");
+            $this->assertSame('active', $this->userStatus(self::NORMAL_A));
+            // Carry the pending login (and its per-login count) to the next request.
+            $this->session(['agent_id' => self::NORMAL_A, 'otp_attempts' => $i]);
+        }
+
+        $this->enableCsrfToken();
+        $this->post('/agent-users/otp', ['otp' => '000000']);
+        $this->assertFlashMessage(self::DISABLED_MESSAGE);
+        $this->assertSame('inactive', $this->userStatus(self::NORMAL_A));
+        // Admins always get the email (Login.deactivation_notify_emails is empty here), plus the master.
+        $this->assertMailSentTo('admin@example.com');
+        $this->assertMailSentTo('master.a@example.com');
+        // Cleared on disable: status inactive is the lock, and an enable from the back office starts afresh.
+        $this->assertSame(0, $this->countLogins('agent_code', 'normal.a@example.com'));
+    }
+
+    public function testBackOfficeEnableGivesAFreshCount(): void
+    {
+        Configure::write('Login.code_max_failures', 2);
+        [$secret] = $this->linkAuthenticator(self::NORMAL_A);
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+        $this->assertSame('inactive', $this->userStatus(self::NORMAL_A));
+
+        // tdpadmin only flips the status.
+        $this->setUser(self::NORMAL_A, ['status' => 'active']);
+
+        $this->loginPost('normal.a@example.com');
+        $this->assertRedirectContains('/agent-users/otp');
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+        $this->assertFlashMessage('Incorrect code. Please try again.');
+        $this->postCode($this->appCode($secret), ['agent_id' => self::NORMAL_A]);
+        $this->assertSession(self::NORMAL_A, 'Auth.User.id');
+    }
+
+    public function testDisabledUserCannotRequestAPasswordReset(): void
+    {
+        $this->setUser(self::NORMAL_A, ['status' => 'inactive']);
+        $this->enableCsrfToken();
+        $this->post('/agent-users/forgot-password', ['email' => 'normal.a@example.com']);
+
+        // Same message as for any address, but nothing is sent or stored.
+        $this->assertFlashMessage('You should receive an email to reset your password. Please check your email and click the link provided within 24 hours.');
+        $this->assertNoMailSent();
+        $this->assertSame(0, (int)$this->db->execute("SELECT COUNT(*) AS n FROM password_resets WHERE email = 'normal.a@example.com'")->fetch('assoc')['n']);
+    }
+
+    public function testDisabledUserCannotUseAnEarlierResetLink(): void
+    {
+        $this->db->insert('password_resets', [
+            'email' => 'normal.a@example.com', 'reset_code' => 'abc123', 'type' => 'agent', 'created' => new DateTime(),
+        ], ['created' => 'datetime']);
+        $this->setUser(self::NORMAL_A, ['status' => 'inactive']);
+
+        $this->enableCsrfToken();
+        $this->post('/agent-users/reset-password/normal.a@example.com/abc123', ['password' => 'New#Pass12345', 'confirm_password' => 'New#Pass12345']);
+
+        $this->assertRedirectContains('/agent-users/login');
+        $this->assertFlashMessage('Password reset link not found or expired.');
+        $this->assertSame(0, (int)$this->db->execute("SELECT COUNT(*) AS n FROM password_resets WHERE email = 'normal.a@example.com'")->fetch('assoc')['n']);
+        $hash = $this->db->execute('SELECT password FROM agent_users WHERE id = UNHEX(REPLACE(?, \'-\', \'\'))', [self::NORMAL_A])->fetch('assoc')['password'];
+        $this->assertTrue((new DefaultPasswordHasher())->check(self::PASSWORD, $hash), 'password unchanged');
+    }
+
+    public function testFailuresOlderThanTheWindowDontCount(): void
+    {
+        Configure::write('Login.code_max_failures', 3);
+        Configure::write('Login.code_failure_minutes', 60);
+        $this->linkAuthenticator(self::NORMAL_A);
+        $old = new DateTime('-61 minutes');
+        foreach ([1, 2] as $n) {
+            $this->db->insert('logins', ['ip' => self::IP, 'email' => 'normal.a@example.com', 'loc' => 'agent_code', 'created' => $old], ['created' => 'datetime']);
+        }
+
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+
+        $this->assertFlashMessage('Incorrect code. Please try again.');
+        $this->assertSame('active', $this->userStatus(self::NORMAL_A));
+    }
+
+    public function testMasterEnableClearsTheWrongCodeCount(): void
+    {
+        Configure::write('Login.code_max_failures', 2);
+        $this->linkAuthenticator(self::NORMAL_A);
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+        $this->postCode('000000', ['agent_id' => self::NORMAL_A]);
+        $this->assertSame('inactive', $this->userStatus(self::NORMAL_A));
+
+        $this->session(['Auth' => ['User' => [
+            'id' => self::MASTER_A, 'agent_id' => self::AGENT_A, 'role' => 'master', 'email' => 'master.a@example.com', 'name' => 'Test',
+            'credits' => '0.00',
+            'agent' => ['mobile_otp' => true, 'low_credit_limit' => '0.00', 'first_name' => 'T', 'last_name' => 'A'],
+        ]]]);
+        $this->enableCsrfToken();
+        $this->post('/agent-users/activate/' . self::NORMAL_A);
+
+        $this->assertSame('active', $this->userStatus(self::NORMAL_A));
+        $this->assertSame(0, $this->countLogins('agent_code', 'normal.a@example.com'));
+    }
+
+    public function testCorrectPasswordDoesNotResetTheCounters(): void
+    {
+        $this->linkAuthenticator(self::MASTER_A);
+        $this->db->insert('logins', ['ip' => self::IP, 'email' => 'master.a@example.com', 'loc' => 'agent', 'created' => new DateTime()], ['created' => 'datetime']);
+        $this->db->insert('logins', ['ip' => self::IP, 'email' => 'master.a@example.com', 'loc' => 'agent_code', 'created' => new DateTime()], ['created' => 'datetime']);
+
+        $this->loginPost();
+
+        $this->assertRedirectContains('/agent-users/otp');
+        $this->assertSame(2, $this->countLogins('agent'), 'earlier attempt + this one');
+        $this->assertSame(1, $this->countLogins('agent_code'));
+    }
+
+    public function testCompleteLoginClearsTheCounters(): void
+    {
+        [$secret] = $this->linkAuthenticator(self::MASTER_A);
+        $this->db->insert('logins', ['ip' => self::IP, 'email' => 'master.a@example.com', 'loc' => 'agent', 'created' => new DateTime()], ['created' => 'datetime']);
+        $this->db->insert('logins', ['ip' => '10.9.9.9', 'email' => 'master.a@example.com', 'loc' => 'agent_code', 'created' => new DateTime()], ['created' => 'datetime']);
+        $this->db->insert('logins', ['ip' => self::IP, 'email' => 'normal.a@example.com', 'loc' => 'agent', 'created' => new DateTime()], ['created' => 'datetime']);
+
+        $this->postCode($this->appCode($secret));
+
+        $this->assertSession(self::MASTER_A, 'Auth.User.id');
+        $this->assertSame(0, $this->countLogins('agent'));
+        $this->assertSame(0, $this->countLogins('agent_code'));
+        $this->assertSame(1, $this->countLogins('agent', 'normal.a@example.com'), 'other users from the same IP still count');
+    }
+
+    public function testRightCodeIsNotCountedAsFailure(): void
+    {
+        [$secret] = $this->linkAuthenticator(self::MASTER_A);
+        $this->postCode('000000');
+        $this->assertSame(1, $this->countLogins('agent_code'));
+
+        $this->postCode($this->appCode($secret));
+        $this->assertSession(self::MASTER_A, 'Auth.User.id');
+        // Cleared by the complete login; the right code itself never left a row.
+        $this->assertSame(0, $this->countLogins('agent_code'));
+    }
+
+    public function testCodeEmailsAreCappedPerAccount(): void
+    {
+        Configure::write('Login.otp_mail_max', 1);
+        $this->setUser(self::MASTER_A, ['two_factor_method' => 'email_otp']);
+
+        $this->loginPost();
+        $this->assertRedirectContains('/agent-users/otp');
+        $this->assertMailSentTo('master.a@example.com');
+
+        $this->cleanupEmailTrait();
+        $this->loginPost();
+        $this->assertRedirectContains('/agent-users/login');
+        $this->assertFlashMessage('Too many codes have been sent to your email. Please try again in 15 minutes.');
+        $this->assertNoMailSent();
     }
 
     public function testBackupCodesAreNotAccepted(): void

@@ -80,9 +80,30 @@ return [
     //     'timeout' => 120,
     //     'ini' => ['session.cookie_lifetime' => 0],
     // ],
+    // Sign-in limits (rows in the shared `logins` table; tdpadmin's AgentLogin block mirrors the first two).
     'Login' => [
+        // Password attempts per IP + email within max_minutes.
         'max_minutes' => 3,
         'max_count_per_max_minutes' => 5,
+        // Password attempts per email from any IP.
+        // 'account_max_count' => 20,
+        // 'account_max_minutes' => 30,
+        // Wrong codes (app / emailed / set-up) per account (any login, session or IP) that DISABLE the agent
+        // user (status inactive, logged out, no password reset). They count until a complete sign-in (a correct
+        // password alone doesn't reset them), or only within code_failure_minutes when that is set. The count is
+        // cleared when the user is disabled; a master re-enables the user from Agent Users, or the back office.
+        // 'code_max_failures' => 5,
+        // 'code_failure_minutes' => null,
+        // Wrong codes in one password login before "log in again" (default: code_max_failures).
+        // 'code_max_per_login' => 5,
+        // From this wrong code on, the error also warns how many more will disable the account.
+        // 'code_warn_from' => 3,
+        // Who is emailed when a user is disabled this way, besides Default.admin_email (always) and the agent's
+        // master accounts (when the user isn't a master).
+        // 'deactivation_notify_emails' => ['security@example.com'],
+        // Sign-in code emails per account.
+        // 'otp_mail_max' => 5,
+        // 'otp_mail_minutes' => 15,
     ],
     'PdfGenerator' => [
         'url' => '',

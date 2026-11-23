@@ -102,6 +102,14 @@ Configure::write('Vouchers.display_in_browser.agent_ids', []);
 Configure::write('Vouchers.allowLegacyMd5Links', false);
 Configure::write('Login.max_minutes', 3);
 Configure::write('Login.max_count_per_max_minutes', 5);
+Configure::write('Login.account_max_count', 20);
+Configure::write('Login.account_max_minutes', 30);
+// Defaults: 5 wrong codes disable the user; no window (they count until a complete sign-in);
+// the per-login limit follows code_max_failures.
+Configure::write('Login.code_max_failures', 5);
+Configure::write('Login.deactivation_notify_emails', []);
+Configure::write('Login.otp_mail_max', 5);
+Configure::write('Login.otp_mail_minutes', 15);
 Configure::write('Security.cfConnectingIp', 'cloudflare');
 
 TransportFactory::drop('default');

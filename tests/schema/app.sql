@@ -937,11 +937,12 @@ CREATE TABLE `logins` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `ip` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
   `email` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `loc` enum('agent','admin','redeem','merchant') COLLATE utf8mb4_unicode_ci DEFAULT 'agent',
+  `loc` enum('agent','admin','redeem','merchant','admin_code','admin_otp_mail','agent_code','agent_otp_mail') COLLATE utf8mb4_unicode_ci DEFAULT 'agent',
   `created` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `ip_idx` (`ip`,`email`,`loc`),
-  KEY `created_idx` (`created`)
+  KEY `created_idx` (`created`),
+  KEY `email_loc_created_idx` (`email`,`loc`,`created`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
