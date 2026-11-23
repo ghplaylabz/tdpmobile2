@@ -100,10 +100,16 @@ class AgentUsersController extends AppController
         // }
         
         if ($auth_agent) {
-          $this->Logins->clearLogin($this->request);
+          // Don't clear the attempt counters here: a correct password alone must not reset the
+          // limits (that let whoever had the password guess codes forever). They are cleared once
+          // the login is complete (here for logins without a code, else in _completeLogin()).
+          if (TwoFactor::required($agent) && $this->Logins->isCodeLocked((string)$agent->email)) {
+            return $this->_codeLockedOut();
+          }
 
           // 2FA when the agent has OTP on and the user's own switch is on.
           if (!TwoFactor::required($agent)) {
+            $this->Logins->clearLogin($this->request, (string)$agent->email);
             /* bypass otp */
             $parent_agent = $this->AgentUsers->Agents->find()
 								->where(['id'=>$auth_agent['agent_id']])
@@ -152,7 +158,11 @@ class AgentUsersController extends AppController
             $session->delete('otp_resends');
             $session->delete('TwoFactor');
             if (!TwoFactor::isSetUp($agent)) {
-              $this->_sendEmailOtp($agent, $clientIp);
+              if (!$this->_sendEmailOtp($agent, $clientIp)) {
+                $session->delete('agent_id');
+                $this->_otpMailLimitFlash();
+                return $this->redirect(['action' => 'login']);
+              }
               $this->Flash->success(__('Please check your email for your One Time Password (OTP). Next, you will set up an authenticator app.'));
             }
             return $this->redirect($otp_url);
@@ -165,7 +175,11 @@ class AgentUsersController extends AppController
             $agent = $this->AgentUsers->get($auth_agent['id'], contain: ['Agents']);
             $session->write('agent_id',$agent->id);
             $session->delete('TwoFactor');
-            $this->_sendEmailOtp($agent, $clientIp);
+            if (!$this->_sendEmailOtp($agent, $clientIp)) {
+              $session->delete('agent_id');
+              $this->_otpMailLimitFlash();
+              return $this->redirect(['action' => 'login']);
+            }
             $this->Flash->error(__('We don\'t recognize the IP address ({0}) you are using. Please check your email for your One Time Password (OTP).', $clientIp));
             $session->delete('otp_resends');
             return $this->redirect($otp_url);
@@ -174,6 +188,9 @@ class AgentUsersController extends AppController
           // list, and keep the historical users_ipaddress record up to date.
           $this->LastOtpIps->addAndPrune($auth_agent['id'], $clientIp);
           $this->UsersIpaddress->addOrUpdate(['user_id'=>$auth_agent['id'],'ip_address'=>$clientIp,'type'=>'agent']);
+          // Trusted IP, no code needed: the login is complete.
+          $this->Logins->clearLogin($this->request, (string)$agent->email);
+          $this->Logins->clearCodeFailures((string)$agent->email);
           if($agent->role == 'master2')  {
             $agent->role = 'master';
           }
@@ -221,7 +238,7 @@ class AgentUsersController extends AppController
       $session = $this->request->getSession();
       $agent_id = $session->read('agent_id');
       $agent = $agent_id ? $this->AgentUsers->find()
-                  ->where(['AgentUsers.id'=>$agent_id])
+                  ->where(['AgentUsers.id'=>$agent_id, 'AgentUsers.status'=>'active'])
                   ->contain(['Agents'])
                   ->first() : null;
       // The method comes from the user's record, never from the session. The session can
@@ -252,11 +269,19 @@ class AgentUsersController extends AppController
         $submitted_otp = trim((string)($data['otp'] ?? ''));
 
         if ($use_app) {
+          // Account-wide limit (any session or IP), reserved right before the code is checked.
+          $attempt = $this->_reserveCodeAttempt($agent);
+          if ($attempt === null) {
+            return $this->_codeLockedOut();
+          }
           if (TwoFactor::verify($agent, $submitted_otp)) {
+            $this->Logins->releaseCodeAttempt($attempt);
             return $this->_completeLogin($agent, $redirect);
           }
-          $this->_countOtpAttempt();
-          $this->Flash->error(__('Incorrect code. Please try again.'));
+          if ($this->_codeFailed($agent, $attempt)) {
+            return $this->_codeLockedOut();
+          }
+          $this->Flash->error($this->_wrongCodeMessage(__('Incorrect code. Please try again.'), $attempt));
           return $this->redirect($redirect ? ['action'=>'otp','?'=>['redirect'=>$redirect]] : ['action'=>'otp']);
         }
 
@@ -278,7 +303,12 @@ class AgentUsersController extends AppController
           return $this->redirect(['action'=>'login']);
         }
 
+        $attempt = $this->_reserveCodeAttempt($agent);
+        if ($attempt === null) {
+          return $this->_codeLockedOut();
+        }
         if ($agent->otp !== null && $submitted_otp !== '' && hash_equals((string)$agent->otp, $submitted_otp)) {
+          $this->Logins->releaseCodeAttempt($attempt);
           // One-time: the code can't be replayed after a successful login.
           $this->AgentUsers->updateAll(['otp' => null, 'otp_created' => null], ['id' => $agent->id]);
           $session->delete('otp_resends');
@@ -290,8 +320,10 @@ class AgentUsersController extends AppController
           }
           return $this->_completeLogin($agent, $redirect);
         } else {
-          $this->_countOtpAttempt();
-          $this->Flash->error(__('Incorrect OTP. Please try again.'));
+          if ($this->_codeFailed($agent, $attempt)) {
+            return $this->_codeLockedOut();
+          }
+          $this->Flash->error($this->_wrongCodeMessage(__('Incorrect OTP. Please try again.'), $attempt));
         }
       }
 
@@ -345,7 +377,10 @@ class AgentUsersController extends AppController
           $this->Flash->error(__('We could not verify you. Please complete the check and try again.'));
           return $this->redirect(['action'=>'otpAnotherWay']);
         }
-        $this->_sendEmailOtp($agent, $clientIp, 'two_factor_fallback');
+        if (!$this->_sendEmailOtp($agent, $clientIp, 'two_factor_fallback')) {
+          $this->_otpMailLimitFlash();
+          return $this->redirect(['action'=>'otp']);
+        }
         $session->write('TwoFactor.email_fallback', time());
         $session->delete('otp_resends');
         $this->Logs->logCustom('two_factor_email_fallback', 'agent_users', 'agent_users', $agent->id, [], ['two_factor' => 'emailed code requested instead of authenticator', 'ip' => $clientIp]);
@@ -364,7 +399,7 @@ class AgentUsersController extends AppController
       $session = $this->request->getSession();
       $agent_id = $session->read('agent_id');
       if (!empty($agent_id)) {
-        $agent_user = $this->AgentUsers->find()->where(['AgentUsers.id' => $agent_id])->contain(['Agents'])->first();
+        $agent_user = $this->AgentUsers->find()->where(['AgentUsers.id' => $agent_id, 'AgentUsers.status' => 'active'])->contain(['Agents'])->first();
         // Authenticator users have no emailed code, unless they passed "Try another way".
         $has_app = !empty($agent_user) && TwoFactor::usesAuthenticator($agent_user) && TwoFactor::isSetUp($agent_user);
         if (!empty($agent_user) && (!$has_app || $session->read('TwoFactor.email_fallback'))) {
@@ -375,7 +410,9 @@ class AgentUsersController extends AppController
             return $this->redirect(['action'=>'otp']);
           }
           $session->write('otp_resends', $resends + 1);
-          $this->_sendEmailOtp($agent_user, ClientIp::fromRequest($this->request), $has_app ? 'two_factor_fallback' : 'new_ip');
+          if (!$this->_sendEmailOtp($agent_user, ClientIp::fromRequest($this->request), $has_app ? 'two_factor_fallback' : 'new_ip')) {
+            $this->_otpMailLimitFlash();
+          }
         }
       }
 
@@ -415,8 +452,19 @@ class AgentUsersController extends AppController
           $this->Flash->error(__('You have exceeded maximum attempts. Please log in again.'));
           return $this->redirect(['action'=>'login']);
         }
+        // During login the set-up code is a second factor too: same account-wide limit.
+        $attempt = null;
+        if (!$logged_in) {
+          $attempt = $this->_reserveCodeAttempt($agent);
+          if ($attempt === null) {
+            return $this->_codeLockedOut();
+          }
+        }
         $step = TwoFactor::matchStep($secret, (string)$this->request->getData('code'));
         if ($step > 0) {
+          if ($attempt !== null) {
+            $this->Logins->releaseCodeAttempt($attempt);
+          }
           TwoFactor::enable($agent, $secret, $step);
           $this->Logs->logCustom('two_factor_setup', 'agent_users', 'agent_users', $agent->id, [], ['two_factor' => 'authenticator set up']);
           $redirect = $session->read('TwoFactor.redirect');
@@ -428,10 +476,12 @@ class AgentUsersController extends AppController
           $this->Flash->success(__('Your authenticator app is set up.'));
           return $this->redirect(['action'=>'twoFactor']);
         }
-        if (!$logged_in) {
-          $this->_countOtpAttempt();
+        if ($attempt !== null) {
+          if ($this->_codeFailed($agent, $attempt)) {
+            return $this->_codeLockedOut();
+          }
         }
-        $this->Flash->error(__('That code didn\'t match. Check the time on your phone and enter the newest code.'));
+        $this->Flash->error($this->_wrongCodeMessage(__('That code didn\'t match. Check the time on your phone and enter the newest code.'), $attempt));
       }
 
       $this->set([
@@ -507,11 +557,16 @@ class AgentUsersController extends AppController
         $this->Flash->error(__('Password reset link not found or expired.'));
         return $this->redirect(['controller'=>'AgentUsers','action'=>'login']);
       }
-      else {
-        $agent = $this->AgentUsers->find()->where(['email'=>$email])->first();
-        unset($agent->password);
-        $this->set('agent',$agent);
+      // A disabled user (e.g. after too many wrong sign-in codes) can't reset their password until
+      // they are enabled again; this also voids links sent before the disable.
+      $agent = $this->AgentUsers->find()->where(['email'=>$email, 'status'=>'active'])->first();
+      if (!$agent) {
+        $this->PasswordResets->delete($password_reset);
+        $this->Flash->error(__('Password reset link not found or expired.'));
+        return $this->redirect(['controller'=>'AgentUsers','action'=>'login']);
       }
+      unset($agent->password);
+      $this->set('agent',$agent);
       if ($this->request->is(['post','patch','put'])) {
         if (!empty($this->request->getData('password')) && $this->request->getData('password')==$this->request->getData('confirm_password')) {
           $agent->password = $this->request->getData('password');
@@ -571,7 +626,11 @@ class AgentUsersController extends AppController
       $password_reset = $this->PasswordResets->newEmptyEntity();
       if ($this->request->is('post')) {
         $email = $this->request->getData('email');
-        $agent = $this->AgentUsers->find()->where(['email'=>$email])->first();
+        // Active users only: a disabled user can't reset their password (same message, so the
+        // response doesn't tell whether the account exists or is disabled).
+        $agent = is_string($email) && $email !== ''
+          ? $this->AgentUsers->find()->where(['AgentUsers.email'=>$email, 'AgentUsers.status'=>'active'])->first()
+          : null;
         if ($agent) {
           $password_reset = $this->PasswordResets->patchEntity($password_reset,['email'=>$email,'reset_code'=>md5(Text::uuid().$email),'type'=>'agent']);
           if ($this->PasswordResets->save($password_reset)) {
@@ -775,6 +834,9 @@ class AgentUsersController extends AppController
           if ($status === 'inactive') {
             // Sessions live in the database: removing them logs the user out now.
             $this->fetchTable('AgentSessions')->deleteAll(['agent_user_id' => (string)$agentUser->id]);
+          } else {
+            // Re-enabled (e.g. after an automatic disable for wrong codes): start the count again.
+            $this->Logins->clearCodeFailures((string)$agentUser->email);
           }
           $this->Logs->logCustom($status === 'active' ? 'agent_user_enabled' : 'agent_user_disabled', 'agent_users', 'agent_users', $agentUser->id, [], ['status' => $status]);
           $this->Flash->success($status === 'active'
@@ -794,7 +856,11 @@ class AgentUsersController extends AppController
      * @param string $clientIp IP shown in the email
      * @return void
      */
-    private function _sendEmailOtp($agent_user, string $clientIp, string $reason = 'new_ip'): void {
+    private function _sendEmailOtp($agent_user, string $clientIp, string $reason = 'new_ip'): bool {
+      // Every password login can email a code: cap them per user (Login.otp_mail_max / otp_mail_minutes).
+      if (!$this->Logins->claimOtpMail((string)$agent_user->email, $clientIp)) {
+        return false;
+      }
       $agent_user->otp = random_int(100001, 999999);
       $date = new \DateTime();
       $agent_user->otp_created = $date->format('Y-m-d H:i:s');
@@ -803,6 +869,17 @@ class AgentUsersController extends AppController
       // ($name,$template, $subject, $to, $data, $cc = null)
       $this->Mailer->mail('OTP','new_ip_otp','Please confirm account access',$agent_user->email,['user'=>$agent_user, 'reason'=>$reason]);
       $this->AgentUsers->save($agent_user);
+
+      return true;
+    }
+
+    /**
+     * Flash shown when the code email cap is reached.
+     *
+     * @return void
+     */
+    private function _otpMailLimitFlash(): void {
+      $this->Flash->error(__('Too many codes have been sent to your email. Please try again in {0} minutes.', (int)Configure::read('Login.otp_mail_minutes', 15)));
     }
 
     /**
@@ -832,6 +909,9 @@ class AgentUsersController extends AppController
       foreach (['agent_id', 'otp_resends', 'otp_attempts', 'TwoFactor'] as $key) {
         $session->delete($key);
       }
+      // Fully signed in: only now reset the password and wrong-code counters.
+      $this->Logins->clearLogin($this->request, (string)$agent->email);
+      $this->Logins->clearCodeFailures((string)$agent->email);
       if ($agent->agent) {
         $agent->agent->last_activity = date('Y-m-d H:i:s');
         $this->AgentUsers->Agents->save($agent->agent);
@@ -858,13 +938,162 @@ class AgentUsersController extends AppController
       return $this->redirect(['controller'=>'Attractions', '?' => ['city_id' => $default_cities]]);
     }
 
+    /**
+     * Wrong codes allowed in one password login (session). The account-wide limit across logins,
+     * sessions and IPs is in LoginsTable (reserveCodeAttempt / isCodeLocked).
+     */
     private function _otpAttemptsExceeded(): bool {
-      return intval($this->request->getSession()->read('otp_attempts') ?? 0) >= intval(Configure::read('Login.max_count_per_max_minutes') ?? 5);
+      // Defaults to the account limit, so N wrong codes in one login disable the user (no "log in again" first).
+      $max = Configure::read('Login.code_max_per_login') ?? \App\Model\Table\LoginsTable::codeMaxFailures();
+      return intval($this->request->getSession()->read('otp_attempts') ?? 0) >= intval($max);
     }
 
     private function _countOtpAttempt(): void {
       $session = $this->request->getSession();
       $session->write('otp_attempts', ($session->read('otp_attempts') ?? 0) + 1);
+    }
+
+    /**
+     * Reserves an account-wide code attempt before a code is checked (see LoginsTable::reserveCodeAttempt()).
+     *
+     * @param \App\Model\Entity\AgentUser $agent Agent user
+     * @return array{id: int, count: int}|null Null when sign-in is locked
+     */
+    private function _reserveCodeAttempt($agent): ?array {
+      $attempt = $this->Logins->reserveCodeAttempt((string)$agent->email, ClientIp::fromRequest($this->request));
+      // The disable clears the wrong-code rows, so a parallel request that loaded the user before it could
+      // reserve a fresh attempt: re-check the status after reserving.
+      if ($attempt !== null && !$this->AgentUsers->exists(['id' => $agent->id, 'status' => 'active'])) {
+        $this->Logins->releaseCodeAttempt($attempt);
+        return null;
+      }
+      return $attempt;
+    }
+
+    /**
+     * A wrong code: counts it for this login and, when it reaches Login.code_max_failures within
+     * Login.code_failure_minutes (any session or IP), deactivates the user.
+     *
+     * @param \App\Model\Entity\AgentUser $agent Agent user (with Agents)
+     * @param array{id: int, count: int} $attempt From _reserveCodeAttempt()
+     * @return bool True when the user was just deactivated (end the login with _codeLockedOut())
+     */
+    private function _codeFailed($agent, array $attempt): bool {
+      $this->_countOtpAttempt();
+      if (!$this->Logins->isLockingAttempt($attempt)) {
+        return false;
+      }
+      $this->_deactivateForCodeFailures($agent, $attempt['count']);
+
+      return true;
+    }
+
+    /**
+     * Disables an agent user after too many wrong sign-in codes: status inactive, logged out everywhere,
+     * logged, and the TDP admins (Login.deactivation_notify_emails) plus the agent's masters are emailed.
+     * The wrong-code rows are then cleared: status inactive is the lock (login, OTP and password reset
+     * require an active user), and an enable from the back office must give the user a fresh count.
+     *
+     * @param \App\Model\Entity\AgentUser $agent Agent user (with Agents)
+     * @param int $failures Wrong codes counted
+     * @return void
+     */
+    private function _deactivateForCodeFailures($agent, int $failures): void {
+      $clientIp = ClientIp::fromRequest($this->request);
+      // updateAll: no entity save side effects (validation, behaviors).
+      $this->AgentUsers->updateAll(['status' => 'inactive'], ['id' => $agent->id]);
+      $this->fetchTable('AgentSessions')->deleteAll(['agent_user_id' => (string)$agent->id]);
+      $this->Logins->clearCodeFailures((string)$agent->email);
+      // Type must fit logs.type (varchar 15).
+      $this->Logs->logCustom('auto_disabled', 'agent_users', 'agent_users', $agent->id, [], [
+        'status' => 'inactive', 'reason' => 'too many wrong sign-in codes', 'failures' => $failures, 'ip' => $clientIp,
+      ]);
+
+      $to = $this->_deactivationRecipients($agent);
+      if (empty($to)) {
+        \Cake\Log\Log::error('agent user ' . $agent->id . ' deactivated for wrong codes, but no one to notify (set Default.admin_email or Login.deactivation_notify_emails)');
+        return;
+      }
+      try {
+        $this->loadComponent('Mailer');
+        $this->Mailer->mail('Security', 'agent_user_deactivated', 'Agent user disabled after too many incorrect sign-in codes', $to, [
+          'name' => (string)$agent->name,
+          'email' => (string)$agent->email,
+          'company' => (string)($agent->agent->company_name ?? ''),
+          'failures' => $failures,
+          'minutes' => \App\Model\Table\LoginsTable::codeFailureMinutes(),
+          'ip' => $clientIp,
+          'time' => \Cake\I18n\DateTime::now(Configure::read('App.defaultTimezone'))->format('d M Y H:i'),
+        ]);
+      } catch (\Throwable $e) {
+        \Cake\Log\Log::error('agent_user_deactivated email failed for ' . $agent->id . ': ' . $e->getMessage());
+      }
+    }
+
+    /**
+     * Who is told about an automatic deactivation: always the TDP admins (Default.admin_email and
+     * Login.deactivation_notify_emails) as direct recipients, plus the agent's active master accounts
+     * when the user isn't a master.
+     *
+     * @param \App\Model\Entity\AgentUser $agent Agent user
+     * @return list<string>
+     */
+    private function _deactivationRecipients($agent): array {
+      // Admins in To, not only the BCC MailerComponent adds (SMTP sends one copy per address).
+      $to = array_merge(
+        (array)Configure::read('Default.admin_email', []),
+        (array)Configure::read('Login.deactivation_notify_emails', [])
+      );
+      if (!in_array($agent->role, ['master', 'master2'], true)) {
+        $masters = $this->AgentUsers->find()
+          ->select(['email'])
+          ->where([
+            'agent_id' => $agent->agent_id,
+            'role IN' => ['master', 'master2'],
+            'status' => 'active',
+            'id !=' => $agent->id,
+          ])
+          ->all()
+          ->extract('email')
+          ->toList();
+        $to = array_merge($to, $masters);
+      }
+      return array_values(array_unique(array_filter($to, fn($email) => is_string($email) && trim($email) !== '')));
+    }
+
+    /**
+     * Message for a wrong sign-in code. From the Login.code_warn_from-th wrong code (default 3) it also warns
+     * how many more wrong codes will deactivate the account.
+     *
+     * @param string $message Base message (already translated)
+     * @param array{id: int, count: int}|null $attempt From _reserveCodeAttempt(); null when not counted
+     * @return string
+     */
+    private function _wrongCodeMessage(string $message, ?array $attempt): string {
+      if ($attempt === null || $attempt['count'] < (int)Configure::read('Login.code_warn_from', 3)) {
+        return $message;
+      }
+      $left = \App\Model\Table\LoginsTable::codeMaxFailures() - $attempt['count'];
+      if ($left <= 0) {
+        return $message;
+      }
+      return $message . ' ' . __n(
+        'Warning: your account will be deactivated after {0} more incorrect code.',
+        'Warning: your account will be deactivated after {0} more incorrect codes.',
+        $left,
+        $left
+      );
+    }
+
+    /**
+     * Ends a pending login whose account was disabled for wrong codes.
+     *
+     * @return \Cake\Http\Response|null
+     */
+    private function _codeLockedOut() {
+      $this->request->getSession()->destroy();
+      $this->Flash->error(__('Too many incorrect codes. Your account has been disabled for security. Please contact your master account or administrator.'));
+      return $this->redirect(['action'=>'login']);
     }
 
     /**
