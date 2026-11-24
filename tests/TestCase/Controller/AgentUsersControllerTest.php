@@ -105,7 +105,8 @@ class AgentUsersControllerTest extends TestCase
         $this->assertSession(self::AGENT_A, 'Auth.User.agent_id');
         $this->assertSession('master', 'Auth.User.role');
         $this->assertSession(null, 'Auth.User.password');
-        $this->assertSame(0, $this->countRows('logins'), 'login attempts cleared after success');
+        // No second factor here, so the login is complete: this user's attempts are cleared.
+        $this->assertSame(0, $this->countRows('logins'), 'login attempts cleared after a complete login');
     }
 
     public function testMaster2RoleIsStoredAsMaster(): void
